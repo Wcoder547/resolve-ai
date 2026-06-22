@@ -1,0 +1,36 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# env
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# next
+.next/
+out/
+
+# python
+.venv/
+__pycache__/
+*.pyc
+
+# build
+dist/
+build/
+
+# logs
+logs/
+*.log
+
+# docker
+*.pid
+
+# prisma
+services/api/prisma/dev.db
+
+# OS
+.DS_Store

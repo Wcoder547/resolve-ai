@@ -1,0 +1,30 @@
+{
+  "name": "resolve-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Production-grade AI-first full-stack SaaS platform for support and incident resolution.",
+  "packageManager": "pnpm@11.8.0",
+  "scripts": {
+    "dev:web": "pnpm --filter web dev",
+    "dev:api": "pnpm --filter api dev",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "db:studio": "pnpm --filter api db:studio",
+    "db:migrate": "pnpm --filter api db:migrate"
+  },
+  "keywords": [
+    "ai",
+    "rag",
+    "agentic-ai",
+    "langchain",
+    "langgraph",
+    "nextjs",
+    "fastapi",
+    "express",
+    "docker",
+    "aws"
+  ],
+  "author": "Waseem Akram",
+  "license": "MIT"
+}

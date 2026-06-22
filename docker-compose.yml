@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: resolveai-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: resolveai
+      POSTGRES_PASSWORD: resolveai_password
+      POSTGRES_DB: resolveai_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - resolveai_postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: resolveai-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - resolveai_redis_data:/data
+
+volumes:
+  resolveai_postgres_data:
+  resolveai_redis_data:
