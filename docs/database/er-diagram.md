@@ -8,6 +8,13 @@ erDiagram
     User ||--o{ AuditLog : creates
     Organization ||--o{ AuditLog : contains
 
+    Organization ||--o{ KnowledgeSource : owns
+    User ||--o{ KnowledgeSource : uploads
+    KnowledgeSource ||--o{ Document : contains
+    Organization ||--o{ Document : owns
+    Document ||--o{ DocumentChunk : split_into
+    Organization ||--o{ DocumentChunk : owns
+
     User {
         String id PK
         String name
@@ -52,5 +59,45 @@ erDiagram
         String action
         Json metadata
         DateTime createdAt
+    }
+
+    KnowledgeSource {
+        String id PK
+        String organizationId FK
+        String createdByUserId FK
+        KnowledgeSourceType type
+        String name
+        KnowledgeSourceStatus status
+        String url
+        String filePath
+        String mimeType
+        Int sizeBytes
+        Json metadata
+        DateTime createdAt
+        DateTime updatedAt
+    }
+
+    Document {
+        String id PK
+        String organizationId FK
+        String sourceId FK
+        String title
+        String contentHash
+        Json metadata
+        DateTime createdAt
+        DateTime updatedAt
+    }
+
+    DocumentChunk {
+        String id PK
+        String organizationId FK
+        String documentId FK
+        Int chunkIndex
+        String chunkText
+        Int tokenCount
+        String embeddingId
+        Json metadata
+        DateTime createdAt
+        DateTime updatedAt
     }
 ```

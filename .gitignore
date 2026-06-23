@@ -34,3 +34,7 @@ services/api/prisma/dev.db
 
 # OS
 .DS_Store
+
+
+# uploaded files
+services/api/uploads/

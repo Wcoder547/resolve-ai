@@ -5,6 +5,9 @@ import helmet from "helmet";
 import morgan from "morgan";
 import dotenv from "dotenv";
 import authRoutes from "./modules/auth/auth.routes";
+import organizationRoutes from "./modules/organizations/organization.routes.js";
+import knowledgeRoutes from "./modules/knowledge/knowledge.routes.js";
+import chatRoutes from "./modules/chat/chat.routes.js";
 
 dotenv.config();
 
@@ -34,6 +37,9 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/organizations", organizationRoutes);
+app.use("/api/knowledge", knowledgeRoutes);
+app.use("/api/chat", chatRoutes);
 
 app.listen(PORT, () => {
   console.log(`Node API running on http://localhost:${PORT}`);

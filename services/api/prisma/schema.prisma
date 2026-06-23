@@ -15,15 +15,40 @@ enum UserRole {
   VIEWER
 }
 
+enum KnowledgeSourceType {
+  FILE
+  URL
+  GITHUB
+  MARKDOWN
+  TEXT
+}
+
+enum KnowledgeSourceStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
 model User {
   id           String @id @default(uuid())
   name         String
   email        String @unique
   passwordHash String
 
-  memberships   OrganizationMember[]
-  refreshTokens RefreshToken[]
-  auditLogs     AuditLog[]
+  memberships             OrganizationMember[]
+  refreshTokens           RefreshToken[]
+  auditLogs               AuditLog[]
+  createdKnowledgeSources KnowledgeSource[]    @relation("KnowledgeSourceCreatedBy")
+
+  conversations Conversation[]
+  messages      Message[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -35,8 +60,14 @@ model Organization {
   slug String @unique
   plan String @default("FREE")
 
-  members   OrganizationMember[]
-  auditLogs AuditLog[]
+  members          OrganizationMember[]
+  auditLogs        AuditLog[]
+  knowledgeSources KnowledgeSource[]
+  documents        Document[]
+  documentChunks   DocumentChunk[]
+
+  conversations Conversation[]
+  messages      Message[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -81,4 +112,107 @@ model AuditLog {
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
+}
+
+model KnowledgeSource {
+  id              String                @id @default(uuid())
+  organizationId  String
+  createdByUserId String?
+  type            KnowledgeSourceType
+  name            String
+  status          KnowledgeSourceStatus @default(PENDING)
+  url             String?
+  filePath        String?
+  mimeType        String?
+  sizeBytes       Int?
+  metadata        Json?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("KnowledgeSourceCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  documents    Document[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([createdByUserId])
+}
+
+model Document {
+  id             String  @id @default(uuid())
+  organizationId String
+  sourceId       String
+  title          String
+  contentHash    String?
+  metadata       Json?
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  source       KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  chunks       DocumentChunk[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([sourceId])
+}
+
+model DocumentChunk {
+  id             String  @id @default(uuid())
+  organizationId String
+  documentId     String
+  chunkIndex     Int
+  chunkText      String
+  tokenCount     Int?
+  embeddingId    String?
+  metadata       Json?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  document     Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([documentId, chunkIndex])
+  @@index([organizationId])
+  @@index([documentId])
+}
+
+model Conversation {
+  id             String  @id @default(uuid())
+  organizationId String
+  userId         String?
+  title          String
+  metadata       Json?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  messages     Message[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([userId])
+}
+
+model Message {
+  id             String      @id @default(uuid())
+  organizationId String
+  conversationId String
+  userId         String?
+  role           MessageRole
+  content        String
+  sources        Json?
+  metadata       Json?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([conversationId])
+  @@index([userId])
 }
