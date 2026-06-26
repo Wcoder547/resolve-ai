@@ -33,6 +33,14 @@ class RagChatData(BaseModel):
     model: str
     provider: str
     grounded: bool
+    fallback_used: bool = Field(default=False, alias="fallbackUsed")
+    provider_errors: List[str] = Field(default_factory=list, alias="providerErrors")
+    agent_plan: Optional[Dict[str, Any]] = Field(default=None, alias="agentPlan")
+    quality: Optional[Dict[str, Any]] = None
+
+    model_config = {
+        "populate_by_name": True
+    }
 
 
 class RagChatResponse(BaseModel):

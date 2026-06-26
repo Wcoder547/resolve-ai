@@ -1,3 +1,4 @@
+import { env } from "../../config/env.js";
 import { getEnv } from "../../utils/env.js";
 
 type RagChatSource = {
@@ -21,37 +22,72 @@ type RagChatResponse = {
   success: boolean;
   message: string;
   data: {
-  answer: string;
-  sources: RagChatSource[];
-  model: string;
-  provider: string;
-  grounded: boolean;
-};
+    answer: string;
+    sources: RagChatSource[];
+    model: string;
+    provider: string;
+    grounded: boolean;
+    fallbackUsed?: boolean;
+    providerErrors?: string[];
+    agentPlan?: Record<string, unknown>;
+    quality?: Record<string, unknown>;
+  };
 };
 
+function createAIServiceError(message: string, name = "AIServiceError") {
+  const error = new Error(message);
+  error.name = name;
+  return error;
+}
+
 export async function callAIRagChatService(
-  input: CallRagChatInput
+  input: CallRagChatInput,
 ): Promise<RagChatResponse> {
   const aiServiceUrl = getEnv("AI_SERVICE_URL");
 
-  const response = await fetch(`${aiServiceUrl}/ai/chat/rag`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(input)
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, env.AI_CHAT_TIMEOUT_MS);
 
-  const data = await response.json();
+  try {
+    const response = await fetch(`${aiServiceUrl}/ai/chat/rag`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      signal: controller.signal,
+      body: JSON.stringify(input),
+    });
 
-  if (!response.ok) {
-    const message =
-      typeof data.detail === "string"
-        ? data.detail
-        : "AI RAG chat service failed.";
+    const data = await response.json().catch(() => null);
 
-    throw new Error(message);
+    if (!response.ok) {
+      const message =
+        data && typeof data.detail === "string"
+          ? data.detail
+          : data && typeof data.message === "string"
+            ? data.message
+            : "AI RAG chat service failed.";
+
+      throw createAIServiceError(message);
+    }
+
+    return data as RagChatResponse;
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw createAIServiceError(
+        "AI service request timed out. Please try again.",
+        "AIServiceTimeoutError",
+      );
+    }
+
+    if (error instanceof Error) {
+      throw createAIServiceError(error.message);
+    }
+
+    throw createAIServiceError("Unknown AI service error.");
+  } finally {
+    clearTimeout(timeout);
   }
-
-  return data as RagChatResponse;
 }

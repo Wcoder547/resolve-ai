@@ -1,57 +1,100 @@
-import os
-from dotenv import load_dotenv
-
+from app.config.settings import get_settings
 from app.providers.base import BaseLLMProvider
 from app.providers.gemini_provider import GeminiProvider
 from app.providers.groq_provider import GroqProvider
 from app.providers.openrouter_provider import OpenRouterProvider
 
-load_dotenv()
 
+def get_provider_model_name(provider_name: str) -> str:
+    settings = get_settings()
 
-def get_llm_provider() -> BaseLLMProvider:
-    provider = os.getenv("LLM_PROVIDER", "openrouter").lower().strip()
+    if provider_name == "openrouter":
+        return settings.openrouter_model
 
-    if provider == "openrouter":
-        return OpenRouterProvider(
-            api_key=os.getenv("OPENROUTER_API_KEY", ""),
-            model=os.getenv(
-                "OPENROUTER_MODEL",
-                "mistralai/mistral-7b-instruct:free",
-            ),
-        )
+    if provider_name == "groq":
+        return settings.groq_model
 
-    if provider == "groq":
-        return GroqProvider(
-            api_key=os.getenv("GROQ_API_KEY", ""),
-            model=os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
-        )
-
-    if provider == "gemini":
-        return GeminiProvider(
-            api_key=os.getenv("GOOGLE_API_KEY", ""),
-            model=os.getenv("GEMINI_MODEL", "gemini-3-flash-preview"),
-        )
-
-    raise RuntimeError(
-        f"Unsupported LLM_PROVIDER: {provider}. Use openrouter, groq, or gemini."
-    )
-
-
-def get_current_model_name() -> str:
-    provider = os.getenv("LLM_PROVIDER", "openrouter").lower().strip()
-
-    if provider == "openrouter":
-        return os.getenv("OPENROUTER_MODEL", "mistralai/mistral-7b-instruct:free")
-
-    if provider == "groq":
-        return os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
-
-    if provider == "gemini":
-        return os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
+    if provider_name == "gemini":
+        return settings.gemini_model
 
     return "unknown"
 
 
+def create_provider(provider_name: str) -> BaseLLMProvider:
+    settings = get_settings()
+
+    if provider_name == "openrouter":
+        return OpenRouterProvider(
+            api_key=settings.openrouter_api_key,
+            model=settings.openrouter_model,
+        )
+
+    if provider_name == "groq":
+        return GroqProvider(
+            api_key=settings.groq_api_key,
+            model=settings.groq_model,
+        )
+
+    if provider_name == "gemini":
+        return GeminiProvider(
+            api_key=settings.google_api_key,
+            model=settings.gemini_model,
+        )
+
+    raise RuntimeError(f"Unsupported LLM provider: {provider_name}")
+
+
+def provider_has_key(provider_name: str) -> bool:
+    settings = get_settings()
+
+    if provider_name == "openrouter":
+        return bool(settings.openrouter_api_key)
+
+    if provider_name == "groq":
+        return bool(settings.groq_api_key)
+
+    if provider_name == "gemini":
+        return bool(settings.google_api_key)
+
+    return False
+
+
+def get_llm_provider() -> BaseLLMProvider:
+    settings = get_settings()
+    return create_provider(settings.llm_provider)
+
+
+def get_llm_provider_chain():
+    settings = get_settings()
+
+    priority = [settings.llm_provider, "openrouter", "groq", "gemini"]
+
+    unique_priority = []
+    for provider_name in priority:
+        if provider_name not in unique_priority:
+            unique_priority.append(provider_name)
+
+    chain = []
+
+    for provider_name in unique_priority:
+        if provider_has_key(provider_name):
+            chain.append(
+                {
+                    "name": provider_name,
+                    "model": get_provider_model_name(provider_name),
+                    "provider": create_provider(provider_name),
+                    "is_primary": provider_name == settings.llm_provider,
+                }
+            )
+
+    return chain
+
+
+def get_current_model_name() -> str:
+    settings = get_settings()
+    return settings.selected_model
+
+
 def get_current_provider_name() -> str:
-    return os.getenv("LLM_PROVIDER", "openrouter").lower().strip()
+    settings = get_settings()
+    return settings.llm_provider

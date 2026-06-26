@@ -1,5 +1,5 @@
+import { createHash, randomUUID } from "crypto";
 import { prisma } from "../../lib/prisma.js";
-import { hashPassword } from "../../utils/password.js";
 import { signRefreshToken } from "../../utils/jwt.js";
 
 export function createSlug(value: string) {
@@ -23,22 +23,30 @@ export async function createUniqueOrganizationSlug(name: string) {
   return slug;
 }
 
+export function hashRefreshToken(refreshToken: string) {
+  return createHash("sha256").update(refreshToken).digest("hex");
+}
+
+export function getRefreshTokenExpiry() {
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 7);
+  return expiresAt;
+}
+
 export async function createStoredRefreshToken(userId: string) {
   const refreshToken = signRefreshToken({
     userId,
-    type: "refresh"
+    type: "refresh",
+    tokenId: randomUUID()
   });
 
-  const tokenHash = await hashPassword(refreshToken);
-
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 7);
+  const tokenHash = hashRefreshToken(refreshToken);
 
   await prisma.refreshToken.create({
     data: {
       userId,
       tokenHash,
-      expiresAt
+      expiresAt: getRefreshTokenExpiry()
     }
   });
 

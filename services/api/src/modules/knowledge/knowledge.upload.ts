@@ -1,29 +1,24 @@
 import { NextFunction, Request, Response } from "express";
-import fs from "fs";
 import multer from "multer";
-import path from "path";
+import { env } from "../../config/env.js";
+import {
+  ensureUploadDirectories,
+  getUploadDirectories,
+  isAllowedKnowledgeExtension,
+  sanitizeFileName
+} from "./knowledge.file-utils.js";
 
-const uploadDir = path.join(process.cwd(), "uploads", "knowledge");
+await ensureUploadDirectories();
 
-fs.mkdirSync(uploadDir, {
-  recursive: true
-});
-
-const allowedExtensions = new Set([
-  ".pdf",
-  ".txt",
-  ".md",
-  ".markdown",
-  ".docx"
-]);
+const { temporaryUploadDir } = getUploadDirectories();
 
 const storage = multer.diskStorage({
   destination: (_req, _file, callback) => {
-    callback(null, uploadDir);
+    callback(null, temporaryUploadDir);
   },
 
   filename: (_req, file, callback) => {
-    const safeOriginalName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const safeOriginalName = sanitizeFileName(file.originalname);
     const fileName = `${Date.now()}-${safeOriginalName}`;
 
     callback(null, fileName);
@@ -33,12 +28,11 @@ const storage = multer.diskStorage({
 const uploadKnowledgeFile = multer({
   storage,
   limits: {
-    fileSize: 10 * 1024 * 1024
+    fileSize: env.MAX_UPLOAD_FILE_SIZE_MB * 1024 * 1024,
+    files: 1
   },
   fileFilter: (_req, file, callback) => {
-    const extension = path.extname(file.originalname).toLowerCase();
-
-    if (!allowedExtensions.has(extension)) {
+    if (!isAllowedKnowledgeExtension(file.originalname)) {
       callback(
         new Error("Unsupported file type. Allowed: PDF, TXT, MD, MARKDOWN, DOCX.")
       );

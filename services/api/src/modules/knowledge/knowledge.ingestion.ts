@@ -24,7 +24,8 @@ type CallIngestionServiceInput = {
   sourceId: string;
   documentId: string;
   organizationId: string;
-  filePath: string;
+  filePath?: string;
+  fileUrl?: string;
   mimeType?: string | null;
   metadata?: Record<string, unknown>;
 };
@@ -44,6 +45,7 @@ export async function callAIIngestionService(
       documentId: input.documentId,
       organizationId: input.organizationId,
       filePath: input.filePath,
+      fileUrl: input.fileUrl,
       mimeType: input.mimeType,
       metadata: input.metadata || {}
     })
@@ -55,7 +57,9 @@ export async function callAIIngestionService(
     const message =
       typeof data.detail === "string"
         ? data.detail
-        : "AI ingestion service failed.";
+        : typeof data.message === "string"
+          ? data.message
+          : "AI ingestion service failed.";
 
     throw new Error(message);
   }

@@ -1,5 +1,7 @@
 from typing import Optional
 import httpx
+
+from app.config.settings import get_settings
 from app.providers.base import BaseLLMProvider
 
 
@@ -28,6 +30,8 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         if not self.api_key:
             raise RuntimeError(f"{self.provider_name} API key is missing.")
 
+        settings = get_settings()
+
         payload: dict = {
             "model": self.model,
             "messages": [
@@ -52,12 +56,21 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             **self.extra_headers,
         }
 
-        response = httpx.post(
-            f"{self.base_url}/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=60,
-        )
+        try:
+            response = httpx.post(
+                f"{self.base_url}/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=settings.request_timeout_seconds,
+            )
+        except httpx.TimeoutException:
+            raise RuntimeError(
+                f"{self.provider_name} request timed out."
+            )
+        except httpx.RequestError as error:
+            raise RuntimeError(
+                f"{self.provider_name} request failed: {str(error)}"
+            )
 
         if response.status_code >= 400:
             raise RuntimeError(

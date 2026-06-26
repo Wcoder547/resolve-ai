@@ -1,31 +1,28 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import { z } from "zod";
-import {
-  loginSchema,
-  refreshSchema,
-  registerSchema
-} from "./auth.validation.js";
+import type { AuthenticatedRequest } from "../../middleware/auth.middleware.js";
 import {
   getCurrentUser,
   loginUser,
+  logoutAllUserSessions,
   logoutUser,
   refreshUserToken,
   registerUser
 } from "./auth.service.js";
-import type { AuthenticatedRequest } from "../../middleware/auth.middleware.js";
+import {
+  loginSchema,
+  logoutSchema,
+  refreshSchema,
+  registerSchema
+} from "./auth.validation.js";
 
-
-
-function handleControllerError(error: unknown, res: Response) {
+function handleAuthError(error: unknown, res: Response) {
   if (error instanceof z.ZodError) {
-  const flattened = z.flattenError(error);
-  
-  return res.status(400).json({
-    success: false,
-    message: "Validation failed.",
-    errors: flattened.fieldErrors
-  });
-
+    return res.status(400).json({
+      success: false,
+      message: "Validation failed.",
+      errors: error.flatten().fieldErrors
+    });
   }
 
   if (error instanceof Error) {
@@ -59,40 +56,49 @@ function handleControllerError(error: unknown, res: Response) {
   });
 }
 
-export async function registerController(req: Request, res: Response) {
+export async function registerController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
   try {
-    const data = registerSchema.parse(req.body);
-    const result = await registerUser(data);
+    const input = registerSchema.parse(req.body);
+    const result = await registerUser(input);
 
     return res.status(201).json({
       success: true,
-      message: "Account created successfully.",
+      message: "User registered successfully.",
       data: result
     });
   } catch (error) {
-    return handleControllerError(error, res);
+    return handleAuthError(error, res);
   }
 }
 
-export async function loginController(req: Request, res: Response) {
+export async function loginController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
   try {
-    const data = loginSchema.parse(req.body);
-    const result = await loginUser(data);
+    const input = loginSchema.parse(req.body);
+    const result = await loginUser(input);
 
     return res.json({
       success: true,
-      message: "Logged in successfully.",
+      message: "User logged in successfully.",
       data: result
     });
   } catch (error) {
-    return handleControllerError(error, res);
+    return handleAuthError(error, res);
   }
 }
 
-export async function refreshTokenController(req: Request, res: Response) {
+export async function refreshTokenController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
   try {
-    const data = refreshSchema.parse(req.body);
-    const result = await refreshUserToken(data);
+    const input = refreshSchema.parse(req.body);
+    const result = await refreshUserToken(input);
 
     return res.json({
       success: true,
@@ -100,7 +106,7 @@ export async function refreshTokenController(req: Request, res: Response) {
       data: result
     });
   } catch (error) {
-    return handleControllerError(error, res);
+    return handleAuthError(error, res);
   }
 }
 
@@ -125,7 +131,7 @@ export async function getMeController(
       data: result
     });
   } catch (error) {
-    return handleControllerError(error, res);
+    return handleAuthError(error, res);
   }
 }
 
@@ -143,13 +149,39 @@ export async function logoutController(
       });
     }
 
-    await logoutUser(userId);
+    const input = logoutSchema.parse(req.body || {});
+    await logoutUser(userId, input);
 
     return res.json({
       success: true,
       message: "Logged out successfully."
     });
   } catch (error) {
-    return handleControllerError(error, res);
+    return handleAuthError(error, res);
+  }
+}
+
+export async function logoutAllController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized."
+      });
+    }
+
+    await logoutAllUserSessions(userId);
+
+    return res.json({
+      success: true,
+      message: "Logged out from all sessions successfully."
+    });
+  } catch (error) {
+    return handleAuthError(error, res);
   }
 }

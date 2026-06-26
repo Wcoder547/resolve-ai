@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Production-grade AI-first full-stack SaaS platform for support and incident resolution.",
-  "packageManager": "pnpm@11.8.0",
+  "packageManager": "pnpm@11.9.0",
   "scripts": {
     "dev:web": "pnpm --filter web dev",
     "dev:api": "pnpm --filter api dev",

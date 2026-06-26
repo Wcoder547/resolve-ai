@@ -1,12 +1,13 @@
 import { Router } from "express";
+import { requireAuth } from "../../middleware/auth.middleware.js";
 import {
   getMeController,
   loginController,
+  logoutAllController,
   logoutController,
   refreshTokenController,
   registerController
 } from "./auth.controller.js";
-import { requireAuth } from "../../middleware/auth.middleware.js";
 
 const router = Router();
 
@@ -15,5 +16,6 @@ router.post("/login", loginController);
 router.post("/refresh", refreshTokenController);
 router.get("/me", requireAuth, getMeController);
 router.post("/logout", requireAuth, logoutController);
+router.post("/logout-all", requireAuth, logoutAllController);
 
 export default router;

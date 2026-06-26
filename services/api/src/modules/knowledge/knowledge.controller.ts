@@ -1,4 +1,5 @@
 import { Response } from "express";
+import { z } from "zod";
 import type { AuthenticatedRequest } from "../../middleware/auth.middleware.js";
 import {
   deleteKnowledgeSource,
@@ -6,18 +7,19 @@ import {
   ingestKnowledgeSource,
   listKnowledgeSources,
   searchKnowledgeChunks,
-  uploadKnowledgeSource
+  uploadKnowledgeSource,
 } from "./knowledge.service.js";
-
-import { z } from "zod";
+import { removeFileQuietly } from "./knowledge.file-utils.js";
 import { searchKnowledgeSchema } from "./knowledge.validation.js";
+import { enqueueKnowledgeIngestionJob } from "../jobs/knowledge-ingestion.queue.js";
+import { getKnowledgeIngestionQueuePayload } from "./knowledge.service.js";
 
 function handleKnowledgeError(error: unknown, res: Response) {
   if (error instanceof z.ZodError) {
     return res.status(400).json({
       success: false,
       message: "Validation failed.",
-      errors: error.flatten().fieldErrors
+      errors: error.flatten().fieldErrors,
     });
   }
 
@@ -25,14 +27,21 @@ function handleKnowledgeError(error: unknown, res: Response) {
     if (error.name === "NotFoundError") {
       return res.status(404).json({
         success: false,
-        message: error.message
+        message: error.message,
       });
     }
 
     if (error.name === "BadRequestError") {
       return res.status(400).json({
         success: false,
-        message: error.message
+        message: error.message,
+      });
+    }
+
+    if (error.name === "ConflictError") {
+      return res.status(409).json({
+        success: false,
+        message: error.message,
       });
     }
   }
@@ -41,12 +50,13 @@ function handleKnowledgeError(error: unknown, res: Response) {
 
   return res.status(500).json({
     success: false,
-    message: "Internal server error."
+    message: "Internal server error.",
   });
 }
+
 export async function uploadKnowledgeSourceController(
   req: AuthenticatedRequest,
-  res: Response
+  res: Response,
 ) {
   try {
     const userId = req.user?.userId;
@@ -54,38 +64,56 @@ export async function uploadKnowledgeSourceController(
     const name = typeof req.body.name === "string" ? req.body.name : undefined;
 
     if (!userId) {
+      await removeFileQuietly(file?.path);
+
       return res.status(401).json({
         success: false,
-        message: "Unauthorized."
+        message: "Unauthorized.",
       });
     }
 
     if (!file) {
       return res.status(400).json({
         success: false,
-        message: "File is required. Use form-data field name: file."
+        message: "File is required. Use form-data field name: file.",
       });
     }
 
     const result = await uploadKnowledgeSource({
       userId,
       file,
-      name
+      name,
+    });
+
+    const job = await enqueueKnowledgeIngestionJob({
+      userId: req.user?.id,
+      organizationId: result.source.organizationId,
+      sourceId: result.source.id,
+      trigger: "UPLOAD",
     });
 
     return res.status(201).json({
       success: true,
-      message: "Knowledge source uploaded successfully.",
-      data: result
+      message:
+        "Knowledge source uploaded successfully. Ingestion has been queued.",
+      data: {
+        ...result,
+        ingestion: {
+          queued: true,
+          jobId: job.id,
+          queueName: job.queueName,
+        },
+      },
     });
   } catch (error) {
+    await removeFileQuietly(req.file?.path);
     return handleKnowledgeError(error, res);
   }
 }
 
 export async function listKnowledgeSourcesController(
   req: AuthenticatedRequest,
-  res: Response
+  res: Response,
 ) {
   try {
     const userId = req.user?.userId;
@@ -93,7 +121,7 @@ export async function listKnowledgeSourcesController(
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Unauthorized."
+        message: "Unauthorized.",
       });
     }
 
@@ -102,8 +130,8 @@ export async function listKnowledgeSourcesController(
     return res.json({
       success: true,
       data: {
-        sources
-      }
+        sources,
+      },
     });
   } catch (error) {
     return handleKnowledgeError(error, res);
@@ -112,24 +140,24 @@ export async function listKnowledgeSourcesController(
 
 export async function getKnowledgeSourceController(
   req: AuthenticatedRequest,
-  res: Response
+  res: Response,
 ) {
   try {
     const userId = req.user?.userId;
     const sourceId =
-  typeof req.params.sourceId === "string" ? req.params.sourceId : undefined;
+      typeof req.params.sourceId === "string" ? req.params.sourceId : undefined;
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Unauthorized."
+        message: "Unauthorized.",
       });
     }
 
     if (!sourceId) {
       return res.status(400).json({
         success: false,
-        message: "Source ID is required."
+        message: "Source ID is required.",
       });
     }
 
@@ -138,8 +166,8 @@ export async function getKnowledgeSourceController(
     return res.json({
       success: true,
       data: {
-        source
-      }
+        source,
+      },
     });
   } catch (error) {
     return handleKnowledgeError(error, res);
@@ -148,24 +176,24 @@ export async function getKnowledgeSourceController(
 
 export async function deleteKnowledgeSourceController(
   req: AuthenticatedRequest,
-  res: Response
+  res: Response,
 ) {
   try {
     const userId = req.user?.userId;
     const sourceId =
-  typeof req.params.sourceId === "string" ? req.params.sourceId : undefined;
+      typeof req.params.sourceId === "string" ? req.params.sourceId : undefined;
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Unauthorized."
+        message: "Unauthorized.",
       });
     }
 
     if (!sourceId) {
       return res.status(400).json({
         success: false,
-        message: "Source ID is required."
+        message: "Source ID is required.",
       });
     }
 
@@ -173,53 +201,51 @@ export async function deleteKnowledgeSourceController(
 
     return res.json({
       success: true,
-      message: "Knowledge source deleted successfully."
+      message: "Knowledge source deleted successfully.",
     });
   } catch (error) {
     return handleKnowledgeError(error, res);
   }
 }
-
 
 export async function ingestKnowledgeSourceController(
   req: AuthenticatedRequest,
-  res: Response
+  res: Response,
 ) {
   try {
-    const userId = req.user?.userId;
-    const sourceId =
-  typeof req.params.sourceId === "string" ? req.params.sourceId : undefined;
+    const payload = await getKnowledgeIngestionQueuePayload(
+  req.user?.id,
+  req.params.sourceId
+);
 
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized."
-      });
+const job = await enqueueKnowledgeIngestionJob({
+  userId: payload.userId,
+  organizationId: payload.organizationId,
+  sourceId: payload.sourceId,
+  trigger: "MANUAL_RETRY"
+});
+
+return res.status(202).json({
+  success: true,
+  message: "Knowledge source ingestion has been queued.",
+  data: {
+    sourceId: payload.sourceId,
+    previousStatus: payload.status,
+    ingestion: {
+      queued: true,
+      jobId: job.id,
+      queueName: job.queueName
     }
-
-    if (!sourceId) {
-      return res.status(400).json({
-        success: false,
-        message: "Source ID is required."
-      });
-    }
-
-    const result = await ingestKnowledgeSource(userId, sourceId);
-
-    return res.json({
-      success: true,
-      message: "Knowledge source ingested successfully.",
-      data: result
-    });
+  }
+});
   } catch (error) {
     return handleKnowledgeError(error, res);
   }
 }
 
-
 export async function searchKnowledgeController(
   req: AuthenticatedRequest,
-  res: Response
+  res: Response,
 ) {
   try {
     const userId = req.user?.userId;
@@ -227,7 +253,7 @@ export async function searchKnowledgeController(
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Unauthorized."
+        message: "Unauthorized.",
       });
     }
 
@@ -237,7 +263,7 @@ export async function searchKnowledgeController(
     return res.json({
       success: true,
       message: "Knowledge search completed successfully.",
-      data: result
+      data: result,
     });
   } catch (error) {
     return handleKnowledgeError(error, res);

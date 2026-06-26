@@ -86,6 +86,8 @@ model OrganizationMember {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, organizationId])
+  @@index([userId, createdAt])
+  @@index([organizationId, role])
 }
 
 model RefreshToken {
@@ -99,6 +101,11 @@ model RefreshToken {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+  @@index([userId, revokedAt, expiresAt])
 }
 
 model AuditLog {
@@ -112,6 +119,10 @@ model AuditLog {
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
 }
 
 model KnowledgeSource {
@@ -123,6 +134,10 @@ model KnowledgeSource {
   status          KnowledgeSourceStatus @default(PENDING)
   url             String?
   filePath        String?
+  storageProvider String                @default("LOCAL")
+  storageKey      String?
+  storageBucket   String?
+  storageRegion   String?
   mimeType        String?
   sizeBytes       Int?
   metadata        Json?
@@ -136,6 +151,9 @@ model KnowledgeSource {
 
   @@index([organizationId])
   @@index([createdByUserId])
+  @@index([organizationId, status])
+  @@index([organizationId, type])
+  @@index([organizationId, createdAt])
 }
 
 model Document {
@@ -155,6 +173,8 @@ model Document {
 
   @@index([organizationId])
   @@index([sourceId])
+  @@index([organizationId, contentHash])
+  @@index([organizationId, createdAt])
 }
 
 model DocumentChunk {
@@ -176,6 +196,8 @@ model DocumentChunk {
   @@unique([documentId, chunkIndex])
   @@index([organizationId])
   @@index([documentId])
+  @@index([organizationId, documentId])
+  @@index([organizationId, createdAt])
 }
 
 model Conversation {
@@ -194,6 +216,8 @@ model Conversation {
 
   @@index([organizationId])
   @@index([userId])
+  @@index([organizationId, updatedAt])
+  @@index([organizationId, userId, updatedAt])
 }
 
 model Message {
@@ -215,4 +239,6 @@ model Message {
   @@index([organizationId])
   @@index([conversationId])
   @@index([userId])
+  @@index([conversationId, createdAt])
+  @@index([organizationId, createdAt])
 }

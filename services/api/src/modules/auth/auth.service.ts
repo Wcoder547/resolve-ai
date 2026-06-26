@@ -1,18 +1,45 @@
-import { prisma } from "../../lib/prisma.js";
+
+import { signAccessToken, verifyRefreshToken } from "../../utils/jwt.js";
 import { comparePassword, hashPassword } from "../../utils/password.js";
-import {
-  signAccessToken,
-  verifyRefreshToken
-} from "../../utils/jwt.js";
-import {
-  createStoredRefreshToken,
-  createUniqueOrganizationSlug
-} from "./auth.utils.js";
+import { Prisma } from "@prisma/client";
+import { prisma } from "../../lib/prisma.js";
 import type {
   LoginInput,
+  LogoutInput,
   RefreshInput,
   RegisterInput
 } from "./auth.validation.js";
+import {
+  createStoredRefreshToken,
+  createUniqueOrganizationSlug,
+  hashRefreshToken
+} from "./auth.utils.js";
+
+function createAuthError(name: string, message: string) {
+  const error = new Error(message);
+  error.name = name;
+  return error;
+}
+
+function createSafeUnauthorizedError() {
+  return createAuthError("UnauthorizedError", "Invalid email or password.");
+}
+
+async function writeAuditLog(input: {
+  userId?: string | null;
+  organizationId?: string | null;
+  action: string;
+  metadata?: Record<string, unknown>;
+}) {
+  await prisma.auditLog.create({
+    data: {
+      userId: input.userId || null,
+      organizationId: input.organizationId || null,
+      action: input.action,
+      metadata: (input.metadata || {}) as Prisma.InputJsonValue
+    }
+  });
+}
 
 export async function registerUser(data: RegisterInput) {
   const existingUser = await prisma.user.findUnique({
@@ -22,9 +49,7 @@ export async function registerUser(data: RegisterInput) {
   });
 
   if (existingUser) {
-    const error = new Error("User with this email already exists.");
-    error.name = "ConflictError";
-    throw error;
+    throw createAuthError("ConflictError", "User already exists.");
   }
 
   const passwordHash = await hashPassword(data.password);
@@ -108,27 +133,27 @@ export async function loginUser(data: LoginInput) {
       memberships: {
         include: {
           organization: true
-        }
+        },
+        orderBy: {
+          createdAt: "asc"
+        },
+        take: 1
       }
     }
   });
 
   if (!user) {
-    const error = new Error("Invalid email or password.");
-    error.name = "UnauthorizedError";
-    throw error;
+    throw createSafeUnauthorizedError();
   }
 
-  const isPasswordValid = await comparePassword(
-    data.password,
-    user.passwordHash
-  );
+  const isPasswordValid = await comparePassword(data.password, user.passwordHash);
 
   if (!isPasswordValid) {
-    const error = new Error("Invalid email or password.");
-    error.name = "UnauthorizedError";
-    throw error;
+    throw createSafeUnauthorizedError();
   }
+
+  const organization = user.memberships[0]?.organization || null;
+  const membership = user.memberships[0] || null;
 
   const accessToken = signAccessToken({
     userId: user.id,
@@ -137,16 +162,12 @@ export async function loginUser(data: LoginInput) {
 
   const refreshToken = await createStoredRefreshToken(user.id);
 
-  const activeMembership = user.memberships[0];
-
-  await prisma.auditLog.create({
-    data: {
-      userId: user.id,
-      organizationId: activeMembership?.organizationId,
-      action: "AUTH_LOGIN",
-      metadata: {
-        email: user.email
-      }
+  await writeAuditLog({
+    userId: user.id,
+    organizationId: organization?.id,
+    action: "AUTH_LOGIN",
+    metadata: {
+      email: user.email
     }
   });
 
@@ -156,12 +177,12 @@ export async function loginUser(data: LoginInput) {
       name: user.name,
       email: user.email
     },
-    organization: activeMembership
+    organization: organization
       ? {
-          id: activeMembership.organization.id,
-          name: activeMembership.organization.name,
-          slug: activeMembership.organization.slug,
-          role: activeMembership.role
+          id: organization.id,
+          name: organization.name,
+          slug: organization.slug,
+          role: membership?.role
         }
       : null,
     tokens: {
@@ -172,42 +193,25 @@ export async function loginUser(data: LoginInput) {
 }
 
 export async function refreshUserToken(data: RefreshInput) {
-  const payload = verifyRefreshToken(data.refreshToken);
+  let payload: {
+    userId: string;
+    type: "refresh";
+  };
+
+  try {
+    payload = verifyRefreshToken(data.refreshToken);
+  } catch {
+    throw createAuthError(
+      "UnauthorizedError",
+      "Invalid or expired refresh token."
+    );
+  }
 
   if (payload.type !== "refresh") {
-    const error = new Error("Invalid refresh token.");
-    error.name = "UnauthorizedError";
-    throw error;
-  }
-
-  const storedTokens = await prisma.refreshToken.findMany({
-    where: {
-      userId: payload.userId,
-      revokedAt: null,
-      expiresAt: {
-        gt: new Date()
-      }
-    }
-  });
-
-  let matchedTokenId: string | null = null;
-
-  for (const storedToken of storedTokens) {
-    const isMatch = await comparePassword(
-      data.refreshToken,
-      storedToken.tokenHash
+    throw createAuthError(
+      "UnauthorizedError",
+      "Invalid or expired refresh token."
     );
-
-    if (isMatch) {
-      matchedTokenId = storedToken.id;
-      break;
-    }
-  }
-
-  if (!matchedTokenId) {
-    const error = new Error("Invalid or expired refresh token.");
-    error.name = "UnauthorizedError";
-    throw error;
   }
 
   const user = await prisma.user.findUnique({
@@ -217,14 +221,53 @@ export async function refreshUserToken(data: RefreshInput) {
   });
 
   if (!user) {
-    const error = new Error("User no longer exists.");
-    error.name = "UnauthorizedError";
-    throw error;
+    throw createAuthError("UnauthorizedError", "User no longer exists.");
+  }
+
+  const incomingTokenHash = hashRefreshToken(data.refreshToken);
+
+  const activeRefreshTokens = await prisma.refreshToken.findMany({
+    where: {
+      userId: user.id,
+      revokedAt: null,
+      expiresAt: {
+        gt: new Date()
+      }
+    }
+  });
+
+  const matchingToken = activeRefreshTokens.find(
+    (token) => token.tokenHash === incomingTokenHash
+  );
+
+  if (!matchingToken) {
+    await prisma.refreshToken.updateMany({
+      where: {
+        userId: user.id,
+        revokedAt: null
+      },
+      data: {
+        revokedAt: new Date()
+      }
+    });
+
+    await writeAuditLog({
+      userId: user.id,
+      action: "AUTH_REFRESH_REUSE_DETECTED",
+      metadata: {
+        reason: "Refresh token was valid JWT but not active in database."
+      }
+    });
+
+    throw createAuthError(
+      "UnauthorizedError",
+      "Invalid or expired refresh token."
+    );
   }
 
   await prisma.refreshToken.update({
     where: {
-      id: matchedTokenId
+      id: matchingToken.id
     },
     data: {
       revokedAt: new Date()
@@ -238,7 +281,20 @@ export async function refreshUserToken(data: RefreshInput) {
 
   const refreshToken = await createStoredRefreshToken(user.id);
 
+  await writeAuditLog({
+    userId: user.id,
+    action: "AUTH_REFRESH_ROTATED",
+    metadata: {
+      oldRefreshTokenId: matchingToken.id
+    }
+  });
+
   return {
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email
+    },
     tokens: {
       accessToken,
       refreshToken
@@ -255,15 +311,16 @@ export async function getCurrentUser(userId: string) {
       memberships: {
         include: {
           organization: true
+        },
+        orderBy: {
+          createdAt: "asc"
         }
       }
     }
   });
 
   if (!user) {
-    const error = new Error("User not found.");
-    error.name = "NotFoundError";
-    throw error;
+    throw createAuthError("NotFoundError", "User not found.");
   }
 
   return {
@@ -281,7 +338,32 @@ export async function getCurrentUser(userId: string) {
   };
 }
 
-export async function logoutUser(userId: string) {
+export async function logoutUser(userId: string, input: LogoutInput) {
+  if (input.refreshToken) {
+    const tokenHash = hashRefreshToken(input.refreshToken);
+
+    await prisma.refreshToken.updateMany({
+      where: {
+        userId,
+        tokenHash,
+        revokedAt: null
+      },
+      data: {
+        revokedAt: new Date()
+      }
+    });
+
+    await writeAuditLog({
+      userId,
+      action: "AUTH_LOGOUT_CURRENT_SESSION",
+      metadata: {
+        mode: "single_session"
+      }
+    });
+
+    return true;
+  }
+
   await prisma.refreshToken.updateMany({
     where: {
       userId,
@@ -289,6 +371,37 @@ export async function logoutUser(userId: string) {
     },
     data: {
       revokedAt: new Date()
+    }
+  });
+
+  await writeAuditLog({
+    userId,
+    action: "AUTH_LOGOUT_ALL_SESSIONS_BY_FALLBACK",
+    metadata: {
+      mode: "fallback_all_sessions",
+      reason: "No refresh token provided."
+    }
+  });
+
+  return true;
+}
+
+export async function logoutAllUserSessions(userId: string) {
+  await prisma.refreshToken.updateMany({
+    where: {
+      userId,
+      revokedAt: null
+    },
+    data: {
+      revokedAt: new Date()
+    }
+  });
+
+  await writeAuditLog({
+    userId,
+    action: "AUTH_LOGOUT_ALL_SESSIONS",
+    metadata: {
+      mode: "all_sessions"
     }
   });
 

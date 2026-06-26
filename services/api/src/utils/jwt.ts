@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import { getEnv } from "./env";
+import { getEnv } from "./env.js";
 
 export type AccessTokenPayload = {
   userId: string;
@@ -9,6 +9,7 @@ export type AccessTokenPayload = {
 export type RefreshTokenPayload = {
   userId: string;
   type: "refresh";
+  tokenId: string;
 };
 
 export function signAccessToken(payload: AccessTokenPayload): string {

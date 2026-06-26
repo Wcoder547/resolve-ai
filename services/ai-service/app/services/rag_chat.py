@@ -1,8 +1,4 @@
-from app.providers.llm_factory import (
-    get_current_model_name,
-    get_current_provider_name,
-    get_llm_provider,
-)
+from app.providers.llm_factory import get_llm_provider_chain
 from app.schemas.chat import RagChatRequest
 
 
@@ -46,19 +42,42 @@ Available sources:
 
 
 def generate_rag_answer(payload: RagChatRequest):
-    provider = get_llm_provider()
+    provider_chain = get_llm_provider_chain()
 
-    answer = provider.generate(
-        system_prompt=SYSTEM_PROMPT,
-        user_prompt=build_user_prompt(payload),
-        temperature=0.2,
-        max_tokens=1200,
+    if not provider_chain:
+        raise RuntimeError(
+            "No configured LLM providers found. Please configure OpenRouter, Groq, or Gemini API keys."
+        )
+
+    provider_errors = []
+
+    for index, provider_config in enumerate(provider_chain):
+        provider_name = provider_config["name"]
+        model_name = provider_config["model"]
+        provider = provider_config["provider"]
+
+        try:
+            answer = provider.generate(
+                system_prompt=SYSTEM_PROMPT,
+                user_prompt=build_user_prompt(payload),
+                temperature=0.2,
+                max_tokens=1200,
+            )
+
+            return {
+                "answer": answer,
+                "sources": payload.sources,
+                "model": model_name,
+                "provider": provider_name,
+                "grounded": True,
+                "fallbackUsed": index > 0,
+                "providerErrors": provider_errors,
+            }
+
+        except Exception as error:
+            provider_errors.append(f"{provider_name}: {str(error)}")
+
+    raise RuntimeError(
+        "All configured LLM providers failed. "
+        + " | ".join(provider_errors)
     )
-
-    return {
-        "answer": answer,
-        "sources": payload.sources,
-        "model": get_current_model_name(),
-        "provider": get_current_provider_name(),
-        "grounded": True,
-    }

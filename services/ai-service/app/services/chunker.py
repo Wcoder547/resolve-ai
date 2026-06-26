@@ -1,43 +1,73 @@
 from typing import Any, Dict, List
+
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 def estimate_token_count(text: str) -> int:
-    return max(1, len(text.split()))
+    """
+    Simple token estimation.
+    Roughly 1 token = 4 characters for English text.
+    This is enough for metadata and chunk tracking.
+    """
+    return max(1, len(text) // 4)
 
 
-def chunk_document_text(
+def chunk_text(
     text: str,
-    source_id: str,
-    document_id: str,
-    organization_id: str,
+    metadata: Dict[str, Any] | None = None,
+    chunk_size: int = 512,
+    chunk_overlap: int = 80,
 ) -> List[Dict[str, Any]]:
+    """
+    Split extracted document text into RAG-ready chunks.
+
+    Returns chunks in the format expected by Node API:
+    {
+      chunkIndex: number,
+      chunkText: string,
+      tokenCount: number,
+      metadata: object
+    }
+    """
+
+    cleaned_text = text.strip()
+
+    if not cleaned_text:
+        return []
+
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200,
-        separators=["\n\n", "\n", ". ", " ", ""],
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        separators=[
+            "\n\n",
+            "\n",
+            ". ",
+            "? ",
+            "! ",
+            " ",
+            "",
+        ],
     )
 
-    raw_chunks = splitter.split_text(text)
+    split_texts = splitter.split_text(cleaned_text)
 
     chunks = []
 
-    for index, chunk_text in enumerate(raw_chunks):
-        cleaned_text = chunk_text.strip()
+    for index, chunk in enumerate(split_texts):
+        chunk_content = chunk.strip()
 
-        if not cleaned_text:
+        if not chunk_content:
             continue
 
         chunks.append(
             {
                 "chunkIndex": index,
-                "chunkText": cleaned_text,
-                "tokenCount": estimate_token_count(cleaned_text),
+                "chunkText": chunk_content,
+                "tokenCount": estimate_token_count(chunk_content),
                 "metadata": {
-                    "sourceId": source_id,
-                    "documentId": document_id,
-                    "organizationId": organization_id,
-                    "chunkSize": len(cleaned_text),
+                    **(metadata or {}),
+                    "chunkSize": chunk_size,
+                    "chunkOverlap": chunk_overlap,
                 },
             }
         )
