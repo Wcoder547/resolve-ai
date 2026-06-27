@@ -16,6 +16,7 @@ function getStatusCode(error: AppError) {
   if (error.name === "ForbiddenError") return 403;
   if (error.name === "NotFoundError") return 404;
   if (error.name === "ConflictError") return 409;
+  if (error.name === "UsageLimitError") return 429;
   if (error.name === "AIServiceTimeoutError") return 504;
   if (error.name === "AIServiceError") return 502;
 

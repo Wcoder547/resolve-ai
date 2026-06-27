@@ -1,24 +1,45 @@
 from fastapi import APIRouter, HTTPException
 
-from app.schemas.chat import RagChatRequest, RagChatResponse
+from app.schemas.chat import (
+    QuestionRewriteRequest,
+    QuestionRewriteResponse,
+    RagChatRequest,
+    RagChatResponse,
+)
+from app.services.question_rewriter import rewrite_question_for_rag
 from app.services.rag_chat import generate_rag_answer
 
 router = APIRouter()
 
 
+@router.post("/chat/rewrite-question", response_model=QuestionRewriteResponse)
+def rewrite_question(payload: QuestionRewriteRequest):
+    try:
+        data = rewrite_question_for_rag(payload)
+
+        return {
+            "success": True,
+            "message": "Question rewritten successfully.",
+            "data": data,
+        }
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Question rewrite failed: {str(error)}",
+        )
+
+
 @router.post("/chat/rag", response_model=RagChatResponse)
 def rag_chat(payload: RagChatRequest):
     try:
-        result = generate_rag_answer(payload)
+        data = generate_rag_answer(payload)
 
         return {
             "success": True,
             "message": "RAG answer generated successfully.",
-            "data": result,
+            "data": data,
         }
-
-    except HTTPException:
-        raise
 
     except Exception as error:
         raise HTTPException(

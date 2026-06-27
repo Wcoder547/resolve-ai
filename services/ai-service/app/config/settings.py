@@ -33,6 +33,18 @@ class Settings(BaseSettings):
 
     request_timeout_seconds: int = Field(default=60, ge=5, le=300)
 
+    embedding_provider: str = "fastembed"
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    embedding_dimensions: int = 384
+    embedding_batch_size: int = 32
+    embedding_max_text_chars: int = 8000
+
+    rag_prompt_version: str = "rag-citations-guardrails-v1"
+    rag_require_citations: bool = True
+    rag_max_answer_steps: int = 6
+
+    question_rewrite_prompt_version: str = "question-rewrite-v1"
+
     @property
     def is_production(self) -> bool:
         return self.environment == "production"

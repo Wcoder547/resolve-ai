@@ -1,0 +1,42 @@
+name: ResolveAI Deploy
+
+on:
+  workflow_run:
+    workflows:
+      - ResolveAI CI
+    branches:
+      - main
+    types:
+      - completed
+
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy ResolveAI
+        run: |
+          ssh -i ~/.ssh/id_rsa "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" << 'EOF'
+            set -e
+
+            cd "${{ secrets.VPS_PROJECT_PATH }}"
+
+            ENV_FILE=.env.production \
+            COMPOSE_FILE=docker-compose.prod.yml \
+            API_URL=http://localhost:5000 \
+            ./scripts/ops/deploy-production.sh
+          EOF

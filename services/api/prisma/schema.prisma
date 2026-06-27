@@ -178,14 +178,19 @@ model Document {
 }
 
 model DocumentChunk {
-  id             String  @id @default(uuid())
-  organizationId String
-  documentId     String
-  chunkIndex     Int
-  chunkText      String
-  tokenCount     Int?
-  embeddingId    String?
-  metadata       Json?
+  id                  String                      @id @default(uuid())
+  organizationId      String
+  documentId          String
+  chunkIndex          Int
+  chunkText           String
+  tokenCount          Int?
+  embeddingId         String?
+  embedding           Unsupported("vector(384)")?
+  embeddingProvider   String?
+  embeddingModel      String?
+  embeddingDimensions Int?
+  embeddedAt          DateTime?
+  metadata            Json?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   document     Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
@@ -198,6 +203,7 @@ model DocumentChunk {
   @@index([documentId])
   @@index([organizationId, documentId])
   @@index([organizationId, createdAt])
+  @@index([embeddedAt])
 }
 
 model Conversation {
@@ -241,4 +247,53 @@ model Message {
   @@index([userId])
   @@index([conversationId, createdAt])
   @@index([organizationId, createdAt])
+}
+
+model AiUsageEvent {
+  id             String  @id @default(uuid())
+  organizationId String
+  userId         String?
+  conversationId String?
+  messageId      String?
+
+  operation String
+  provider  String
+  model     String
+
+  promptTokens     Int @default(0)
+  completionTokens Int @default(0)
+  totalTokens      Int @default(0)
+
+  estimatedCostUsd Float   @default(0)
+  isEstimated      Boolean @default(true)
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, operation, createdAt])
+  @@index([userId, createdAt])
+  @@index([conversationId])
+  @@index([messageId])
+}
+
+model OrganizationAiUsageDaily {
+  id             String   @id @default(uuid())
+  organizationId String
+  date           DateTime
+
+  requestCount Int @default(0)
+
+  promptTokens     Int @default(0)
+  completionTokens Int @default(0)
+  totalTokens      Int @default(0)
+
+  estimatedCostUsd Float @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, date])
+  @@index([organizationId, date])
 }

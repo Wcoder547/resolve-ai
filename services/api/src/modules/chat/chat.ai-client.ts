@@ -11,10 +11,49 @@ type RagChatSource = {
   score: number;
 };
 
+
+type AiUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  isEstimated: boolean;
+};
+
+type RagCitation = {
+  label: string;
+  sourceId: string;
+  sourceName: string;
+  documentId: string;
+  documentTitle: string;
+  chunkId: string;
+  chunkIndex: number;
+  score: number;
+  reason?: string | null;
+};
+
+type RagGuardrail = {
+  approved: boolean;
+  grounded: boolean;
+  hasCitations: boolean;
+  citationCount: number;
+  riskLevel: string;
+  unsupportedReason?: string | null;
+};
+
+type ChatHistoryMessage = {
+  role: string;
+  content: string;
+  createdAt?: string;
+};
+
+
+
 type CallRagChatInput = {
   question: string;
+  standaloneQuestion?: string;
   context: string;
   sources: RagChatSource[];
+  conversationHistory?: ChatHistoryMessage[];
   metadata?: Record<string, unknown>;
 };
 
@@ -24,13 +63,18 @@ type RagChatResponse = {
   data: {
     answer: string;
     sources: RagChatSource[];
+    citations: RagCitation[];
     model: string;
     provider: string;
     grounded: boolean;
+    confidence: "low" | "medium" | "high" | string;
+    needsEscalation: boolean;
+    escalationReason?: string | null;
+    guardrails: RagGuardrail;
+    promptVersion: string;
+    RagChatResponse.data
     fallbackUsed?: boolean;
     providerErrors?: string[];
-    agentPlan?: Record<string, unknown>;
-    quality?: Record<string, unknown>;
   };
 };
 
@@ -46,6 +90,7 @@ export async function callAIRagChatService(
   const aiServiceUrl = getEnv("AI_SERVICE_URL");
 
   const controller = new AbortController();
+
   const timeout = setTimeout(() => {
     controller.abort();
   }, env.AI_CHAT_TIMEOUT_MS);

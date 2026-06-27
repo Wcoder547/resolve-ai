@@ -1,0 +1,334 @@
+name: ResolveAI CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  api-ci:
+    name: API Build and Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: resolveai_test
+          POSTGRES_USER: resolveai
+          POSTGRES_PASSWORD: resolveai_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U resolveai -d resolveai_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    defaults:
+      run:
+        working-directory: services/api
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: services/api/pnpm-lock.yaml
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install API dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Create API test env
+        run: |
+          cat > .env.test <<'EOF'
+          NODE_ENV=test
+          PORT=5001
+
+          DATABASE_URL="postgresql://resolveai:resolveai_password@localhost:5432/resolveai_test?schema=public"
+
+          JWT_ACCESS_SECRET="test_access_secret_123456789_minimum_32_chars"
+          JWT_REFRESH_SECRET="test_refresh_secret_123456789_minimum_32_chars"
+
+          AI_SERVICE_URL="http://localhost:8000"
+
+          CORS_ORIGIN="http://localhost:3000"
+          REQUEST_BODY_LIMIT="10mb"
+          MAX_UPLOAD_FILE_SIZE_MB=10
+
+          REDIS_URL="redis://localhost:6379"
+          QUEUE_PREFIX="resolveai-test"
+
+          AI_CHAT_TIMEOUT_MS=70000
+          AI_EMBEDDING_TIMEOUT_MS=120000
+          QUESTION_REWRITE_TIMEOUT_MS=30000
+
+          FOLLOWUP_REWRITE_ENABLED=true
+          CHAT_HISTORY_LIMIT=12
+          CHAT_HISTORY_MAX_CHARS=6000
+
+          RAG_MAX_CONTEXT_CHARS=12000
+          RAG_MIN_RELEVANCE_SCORE=0.0001
+          RAG_MIN_HYBRID_SCORE=0.05
+
+          HYBRID_SEARCH_ENABLED=true
+          RAG_KEYWORD_TOP_K=20
+          RAG_VECTOR_TOP_K=20
+          RAG_RERANK_TOP_K=8
+
+          RAG_KEYWORD_WEIGHT=0.40
+          RAG_VECTOR_WEIGHT=0.50
+          RAG_TERM_COVERAGE_WEIGHT=0.10
+
+          EMBEDDING_DIMENSIONS=384
+
+          SLOW_QUERY_LOG_MS=300
+          LOG_LEVEL="silent"
+
+          ENABLE_METRICS=false
+          METRICS_TOKEN=""
+          HEALTH_CHECK_TIMEOUT_MS=5000
+
+          STORAGE_PROVIDER="local"
+
+          R2_ACCOUNT_ID=""
+          R2_ACCESS_KEY_ID=""
+          R2_SECRET_ACCESS_KEY=""
+          R2_BUCKET_NAME="resolveai-knowledge"
+          R2_PRESIGNED_URL_EXPIRES_SECONDS=600
+
+          KNOWLEDGE_INGESTION_CONCURRENCY=1
+          INGESTION_JOB_ATTEMPTS=1
+          INGESTION_JOB_BACKOFF_MS=1000
+
+          AI_USAGE_TRACKING_ENABLED=true
+          AI_DAILY_REQUEST_LIMIT=1000
+          AI_DAILY_TOKEN_LIMIT=200000
+          AI_MONTHLY_TOKEN_LIMIT=3000000
+          AI_INPUT_COST_PER_1M_TOKENS=0
+          AI_OUTPUT_COST_PER_1M_TOKENS=0
+
+          RAG_EVAL_USER_EMAIL="waseem@example.com"
+          RAG_EVAL_PASSING_SCORE=0.75
+          RAG_EVAL_OUTPUT_DIR="eval-reports-test"
+          EOF
+
+      - name: Generate Prisma client
+        run: dotenv -e .env.test -- pnpm prisma generate
+
+      - name: Reset test database
+        run: pnpm test:db:reset
+
+      - name: Build API
+        run: pnpm build
+
+      - name: Run API tests
+        run: pnpm test
+
+  ai-service-ci:
+    name: AI Service Build and Tests
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: services/ai-service
+
+    env:
+      ENVIRONMENT: test
+      SERVICE_NAME: ResolveAI AI Service
+      API_VERSION: 1.0.0
+
+      CORS_ORIGIN: http://localhost:3000
+
+      LLM_PROVIDER: openrouter
+
+      OPENROUTER_API_KEY: test_openrouter_key
+      OPENROUTER_MODEL: openrouter/free
+
+      GROQ_API_KEY: ""
+      GROQ_MODEL: llama-3.1-8b-instant
+
+      GOOGLE_API_KEY: ""
+      GEMINI_MODEL: gemini-3-flash-preview
+
+      REQUEST_TIMEOUT_SECONDS: 60
+
+      ENABLE_METRICS: false
+      METRICS_TOKEN: ""
+
+      EMBEDDING_PROVIDER: fastembed
+      EMBEDDING_MODEL: BAAI/bge-small-en-v1.5
+      EMBEDDING_DIMENSIONS: 384
+      EMBEDDING_BATCH_SIZE: 32
+      EMBEDDING_MAX_TEXT_CHARS: 8000
+
+      RAG_PROMPT_VERSION: rag-citations-guardrails-v1
+      RAG_REQUIRE_CITATIONS: true
+      RAG_MAX_ANSWER_STEPS: 6
+
+      QUESTION_REWRITE_PROMPT_VERSION: question-rewrite-v1
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install AI service dependencies
+        run: pip install -r requirements.txt
+
+      - name: Compile AI service
+        run: python -m compileall app
+
+      - name: Run AI service tests
+        run: pytest
+
+  docker-build:
+    name: Production Docker Build
+    runs-on: ubuntu-latest
+    needs:
+      - api-ci
+      - ai-service-ci
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create Docker CI env
+        run: |
+          cat > .env.ci.docker <<'EOF'
+          NODE_ENV=production
+          ENVIRONMENT=production
+
+          API_PORT=5000
+          AI_SERVICE_PORT=8000
+
+          POSTGRES_DB=resolveai_db
+          POSTGRES_USER=resolveai
+          POSTGRES_PASSWORD=ci_postgres_password
+
+          DATABASE_URL=postgresql://resolveai:ci_postgres_password@postgres:5432/resolveai_db?schema=public
+
+          REDIS_URL=redis://redis:6379
+          QUEUE_PREFIX=resolveai
+
+          PORT=5000
+          CORS_ORIGIN=http://localhost:3000
+          REQUEST_BODY_LIMIT=10mb
+          MAX_UPLOAD_FILE_SIZE_MB=10
+
+          JWT_ACCESS_SECRET=ci_access_secret_123456789_minimum_32_chars
+          JWT_REFRESH_SECRET=ci_refresh_secret_123456789_minimum_32_chars
+
+          AI_SERVICE_URL=http://ai-service:8000
+
+          AI_CHAT_TIMEOUT_MS=70000
+          AI_EMBEDDING_TIMEOUT_MS=120000
+          QUESTION_REWRITE_TIMEOUT_MS=30000
+
+          FOLLOWUP_REWRITE_ENABLED=true
+          CHAT_HISTORY_LIMIT=12
+          CHAT_HISTORY_MAX_CHARS=6000
+
+          RAG_MAX_CONTEXT_CHARS=12000
+          RAG_MIN_RELEVANCE_SCORE=0.0001
+          RAG_MIN_HYBRID_SCORE=0.05
+
+          HYBRID_SEARCH_ENABLED=true
+          RAG_KEYWORD_TOP_K=20
+          RAG_VECTOR_TOP_K=20
+          RAG_RERANK_TOP_K=8
+
+          RAG_KEYWORD_WEIGHT=0.40
+          RAG_VECTOR_WEIGHT=0.50
+          RAG_TERM_COVERAGE_WEIGHT=0.10
+
+          EMBEDDING_DIMENSIONS=384
+
+          SLOW_QUERY_LOG_MS=300
+          LOG_LEVEL=info
+
+          ENABLE_METRICS=true
+          METRICS_TOKEN=ci_metrics_token
+          HEALTH_CHECK_TIMEOUT_MS=5000
+
+          STORAGE_PROVIDER=local
+
+          R2_ACCOUNT_ID=
+          R2_ACCESS_KEY_ID=
+          R2_SECRET_ACCESS_KEY=
+          R2_BUCKET_NAME=resolveai-knowledge
+          R2_PRESIGNED_URL_EXPIRES_SECONDS=600
+
+          KNOWLEDGE_INGESTION_CONCURRENCY=2
+          INGESTION_JOB_ATTEMPTS=3
+          INGESTION_JOB_BACKOFF_MS=10000
+
+          AI_USAGE_TRACKING_ENABLED=true
+          AI_DAILY_REQUEST_LIMIT=1000
+          AI_DAILY_TOKEN_LIMIT=200000
+          AI_MONTHLY_TOKEN_LIMIT=3000000
+          AI_INPUT_COST_PER_1M_TOKENS=0
+          AI_OUTPUT_COST_PER_1M_TOKENS=0
+
+          SERVICE_NAME=ResolveAI AI Service
+          API_VERSION=1.0.0
+
+          LLM_PROVIDER=openrouter
+
+          OPENROUTER_API_KEY=test_openrouter_key
+          OPENROUTER_MODEL=openrouter/free
+
+          GROQ_API_KEY=
+          GROQ_MODEL=llama-3.1-8b-instant
+
+          GOOGLE_API_KEY=
+          GEMINI_MODEL=gemini-3-flash-preview
+
+          REQUEST_TIMEOUT_SECONDS=60
+
+          EMBEDDING_PROVIDER=fastembed
+          EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
+          EMBEDDING_BATCH_SIZE=32
+          EMBEDDING_MAX_TEXT_CHARS=8000
+
+          RAG_PROMPT_VERSION=rag-citations-guardrails-v1
+          RAG_REQUIRE_CITATIONS=true
+          RAG_MAX_ANSWER_STEPS=6
+
+          QUESTION_REWRITE_PROMPT_VERSION=question-rewrite-v1
+
+          RAG_EVAL_USER_EMAIL=waseem@example.com
+          RAG_EVAL_PASSING_SCORE=0.75
+          RAG_EVAL_OUTPUT_DIR=eval-reports
+          EOF
+
+      - name: Build production Docker images
+        run: docker compose --env-file .env.ci.docker -f docker-compose.prod.yml build

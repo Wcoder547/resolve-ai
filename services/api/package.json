@@ -14,12 +14,19 @@
     "db:studio": "prisma studio",
     "db:generate": "prisma generate",
     "test:migrate": "dotenv -e .env.test -- prisma migrate deploy",
+    "worker:knowledge": "tsx src/workers/knowledge-ingestion.worker.ts",
+    "worker:knowledge:dev": "tsx watch src/workers/knowledge-ingestion.worker.ts",
+    "worker:knowledge:start": "node dist/workers/knowledge-ingestion.worker.js",
+    "embeddings:backfill": "tsx src/scripts/backfill-embeddings.ts",
+    "embeddings:backfill:start": "node dist/scripts/backfill-embeddings.js",
+    "eval:rag": "tsx src/scripts/run-rag-evals.ts",
+    "eval:rag:start": "node dist/scripts/run-rag-evals.js",
     "test": "dotenv -e .env.test -- vitest run",
     "test:watch": "dotenv -e .env.test -- vitest",
     "test:coverage": "dotenv -e .env.test -- vitest run --coverage",
-    "worker:knowledge": "tsx src/workers/knowledge-ingestion.worker.ts",
-    "worker:knowledge:dev": "tsx watch src/workers/knowledge-ingestion.worker.ts",
-    "worker:knowledge:start": "node dist/workers/knowledge-ingestion.worker.js"
+    "test:db:reset": "dotenv -e .env.test -- prisma migrate reset --force --skip-seed",
+    "test:ci": "pnpm test:db:reset && pnpm test"
+  
   },
   "keywords": [],
   "license": "MIT",

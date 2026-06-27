@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: resolveai_postgres_prod
     restart: unless-stopped
     environment:
@@ -27,6 +27,21 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: resolveai_caddy_prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
 
   ai-service:
     build:
@@ -145,3 +160,5 @@ volumes:
   postgres_data:
   redis_data:
   api_uploads:
+  caddy_data:
+  caddy_config:

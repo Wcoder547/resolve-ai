@@ -5,6 +5,17 @@ import { searchKnowledgeChunks } from "../knowledge/knowledge.service.js";
 import { callAIRagChatService } from "./chat.ai-client.js";
 import type { AskQuestionInput } from "./chat.validation.js";
 
+import {
+  assertOrganizationAiUsageAllowed,
+  recordAiUsage,
+} from "../usage/usage.service.js";
+
+import { logger } from "../../lib/logger.js";
+import {
+  callAIQuestionRewriteService,
+  type ChatHistoryMessage,
+} from "./chat.context-client.js";
+
 type RetrievedChunk = Awaited<
   ReturnType<typeof searchKnowledgeChunks>
 >["chunks"][number];
@@ -173,8 +184,188 @@ function createNoContextAnswer() {
   ].join("\n");
 }
 
+function trimChatHistoryByChars(messages: ChatHistoryMessage[]) {
+  let totalChars = 0;
+  const selected: ChatHistoryMessage[] = [];
+
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    const contentLength = message.content.length;
+
+    if (totalChars + contentLength > env.CHAT_HISTORY_MAX_CHARS) {
+      break;
+    }
+
+    totalChars += contentLength;
+    selected.unshift(message);
+  }
+
+  return selected;
+}
+
+async function getConversationHistory(input: {
+  organizationId: string;
+  conversationId: string;
+}) {
+  if (env.CHAT_HISTORY_LIMIT <= 0) {
+    return [];
+  }
+
+  const messages = await prisma.message.findMany({
+    where: {
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+    },
+    select: {
+      role: true,
+      content: true,
+      createdAt: true,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    take: env.CHAT_HISTORY_LIMIT,
+  });
+
+  const chronologicalMessages = messages.reverse().map((message) => ({
+    role: message.role,
+    content: message.content,
+    createdAt: message.createdAt.toISOString(),
+  }));
+
+  return trimChatHistoryByChars(chronologicalMessages);
+}
+
+async function contextualizeQuestion(input: {
+  question: string;
+  conversationHistory: ChatHistoryMessage[];
+  organizationId: string;
+  conversationId: string;
+  userId: string;
+}) {
+  if (!env.FOLLOWUP_REWRITE_ENABLED || input.conversationHistory.length === 0) {
+    return {
+      standaloneQuestion: input.question,
+      wasFollowUp: false,
+      confidence: "high",
+      provider: "none",
+      model: "none",
+      promptVersion: "disabled",
+      fallbackUsed: false,
+      providerErrors: [] as string[],
+    };
+  }
+
+  try {
+    const response = await callAIQuestionRewriteService({
+      question: input.question,
+      conversationHistory: input.conversationHistory,
+      metadata: {
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        userId: input.userId,
+      },
+    });
+
+    return response.data;
+  } catch (error) {
+    logger.warn(
+      {
+        error: {
+          name: error instanceof Error ? error.name : "UnknownError",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Unknown question rewrite error",
+        },
+        conversationId: input.conversationId,
+      },
+      "Question rewrite failed. Falling back to original question.",
+    );
+
+    return {
+      standaloneQuestion: input.question,
+      wasFollowUp: false,
+      confidence: "low",
+      provider: "fallback",
+      model: "none",
+      promptVersion: "fallback",
+      fallbackUsed: true,
+      providerErrors: [
+        error instanceof Error
+          ? error.message
+          : "Unknown question rewrite error",
+      ],
+    };
+  }
+}
+
 export async function askRagQuestion(userId: string, input: AskQuestionInput) {
   const membership = await getPrimaryMembership(userId);
+  if (questionContext.provider !== "none" && questionContext.usage) {
+    await recordAiUsage({
+      organizationId: membership.organizationId,
+      userId,
+      conversationId: conversation.id,
+      messageId: assistantMessage.id,
+      operation: "question_rewrite",
+      provider: questionContext.provider,
+      model: questionContext.model,
+      promptTokens: questionContext.usage.promptTokens,
+      completionTokens: questionContext.usage.completionTokens,
+      totalTokens: questionContext.usage.totalTokens,
+      isEstimated: questionContext.usage.isEstimated,
+      metadata: {
+        originalQuestion: input.question,
+        standaloneQuestion: questionContext.standaloneQuestion,
+        wasFollowUp: questionContext.wasFollowUp,
+      },
+    });
+  }
+
+  if (searchResult.embedding?.usage) {
+    await recordAiUsage({
+      organizationId: membership.organizationId,
+      userId,
+      conversationId: conversation.id,
+      messageId: assistantMessage.id,
+      operation: "embedding_query",
+      provider: searchResult.embedding.provider,
+      model: searchResult.embedding.model,
+      promptTokens: searchResult.embedding.usage.promptTokens,
+      completionTokens: searchResult.embedding.usage.completionTokens,
+      totalTokens: searchResult.embedding.usage.totalTokens,
+      isEstimated: searchResult.embedding.usage.isEstimated,
+      metadata: {
+        originalQuestion: input.question,
+        standaloneQuestion: questionContext.standaloneQuestion,
+        retrievalQuery,
+        retrievalMode: searchResult.retrievalMode,
+      },
+    });
+  }
+
+  await recordAiUsage({
+    organizationId: membership.organizationId,
+    userId,
+    conversationId: conversation.id,
+    messageId: assistantMessage.id,
+    operation: "rag_chat_answer",
+    provider: aiResponse.data.provider,
+    model: aiResponse.data.model,
+    promptTokens: aiResponse.data.usage.promptTokens,
+    completionTokens: aiResponse.data.usage.completionTokens,
+    totalTokens: aiResponse.data.usage.totalTokens,
+    isEstimated: aiResponse.data.usage.isEstimated,
+    metadata: {
+      grounded: aiResponse.data.grounded,
+      confidence: aiResponse.data.confidence,
+      citationCount: aiResponse.data.citations.length,
+      promptVersion: aiResponse.data.promptVersion,
+      retrievalMode: searchResult.retrievalMode,
+      topScore,
+    },
+  });
 
   let conversation = input.conversationId
     ? await prisma.conversation.findFirst({
@@ -201,6 +392,19 @@ export async function askRagQuestion(userId: string, input: AskQuestionInput) {
     });
   }
 
+  const conversationHistory = await getConversationHistory({
+    organizationId: membership.organizationId,
+    conversationId: conversation.id,
+  });
+
+  const questionContext = await contextualizeQuestion({
+    question: input.question,
+    conversationHistory,
+    organizationId: membership.organizationId,
+    conversationId: conversation.id,
+    userId,
+  });
+
   await prisma.message.create({
     data: {
       organizationId: membership.organizationId,
@@ -208,6 +412,11 @@ export async function askRagQuestion(userId: string, input: AskQuestionInput) {
       userId,
       role: "USER",
       content: input.question,
+      metadata: {
+        standaloneQuestion: questionContext.standaloneQuestion,
+        wasFollowUp: questionContext.wasFollowUp,
+        questionRewrite: questionContext,
+      } as Prisma.InputJsonValue,
     },
   });
 
@@ -215,16 +424,17 @@ export async function askRagQuestion(userId: string, input: AskQuestionInput) {
 
   const { retrievalQuery, searchResult } = await retrieveRelevantChunks(
     userId,
-    input.question,
+    questionContext.standaloneQuestion,
     limit,
   );
 
   const topScore = searchResult.chunks[0]?.score ?? 0;
 
-  if (
-    searchResult.chunks.length === 0 ||
-    topScore < env.RAG_MIN_RELEVANCE_SCORE
-  ) {
+  const minimumRetrievalScore = env.HYBRID_SEARCH_ENABLED
+    ? env.RAG_MIN_HYBRID_SCORE
+    : env.RAG_MIN_RELEVANCE_SCORE;
+
+  if (searchResult.chunks.length === 0 || topScore < minimumRetrievalScore) {
     const fallbackAnswer = createNoContextAnswer();
 
     const assistantMessage = await prisma.message.create({
@@ -238,7 +448,13 @@ export async function askRagQuestion(userId: string, input: AskQuestionInput) {
           grounded: false,
           reason: "NO_RELEVANT_CHUNKS_FOUND",
           originalQuestion: input.question,
+          standaloneQuestion: questionContext.standaloneQuestion,
+          wasFollowUp: questionContext.wasFollowUp,
+          questionRewrite: questionContext,
+          conversationHistoryMessages: conversationHistory.length,
           retrievalQuery,
+          retrievalMode: searchResult.retrievalMode,
+          embedding: searchResult.embedding,
           topScore,
         } as Prisma.InputJsonValue,
       },
@@ -265,7 +481,14 @@ export async function askRagQuestion(userId: string, input: AskQuestionInput) {
       grounded: false,
       model: null,
       provider: null,
+
       retrievalQuery,
+      retrievalMode: searchResult.retrievalMode,
+      embedding: searchResult.embedding,
+      totalRetrievedChunks: searchResult.chunks.length,
+      topScore,
+      fallbackUsed: true,
+      providerErrors: [],
     };
   }
 
@@ -282,13 +505,22 @@ export async function askRagQuestion(userId: string, input: AskQuestionInput) {
   try {
     const aiResponse = await callAIRagChatService({
       question: input.question,
+      standaloneQuestion: questionContext.standaloneQuestion,
       context: trimContext(searchResult.context),
       sources,
+      conversationHistory,
       metadata: {
         organizationId: membership.organizationId,
         conversationId: conversation.id,
         userId,
+        originalQuestion: input.question,
+        standaloneQuestion: questionContext.standaloneQuestion,
+        wasFollowUp: questionContext.wasFollowUp,
+        questionRewrite: questionContext,
+        conversationHistoryMessages: conversationHistory.length,
         retrievalQuery,
+        retrievalMode: searchResult.retrievalMode,
+        embedding: searchResult.embedding,
         totalRetrievedChunks: searchResult.chunks.length,
         topScore,
       },
@@ -305,12 +537,22 @@ export async function askRagQuestion(userId: string, input: AskQuestionInput) {
           model: aiResponse.data.model,
           provider: aiResponse.data.provider,
           grounded: aiResponse.data.grounded,
+          confidence: aiResponse.data.confidence,
+          citations: aiResponse.data.citations,
+          needsEscalation: aiResponse.data.needsEscalation,
+          escalationReason: aiResponse.data.escalationReason,
+          guardrails: aiResponse.data.guardrails,
+          promptVersion: aiResponse.data.promptVersion,
           fallbackUsed: aiResponse.data.fallbackUsed || false,
           providerErrors: aiResponse.data.providerErrors || [],
-          agentPlan: aiResponse.data.agentPlan || null,
-          quality: aiResponse.data.quality || null,
           originalQuestion: input.question,
+          standaloneQuestion: questionContext.standaloneQuestion,
+          wasFollowUp: questionContext.wasFollowUp,
+          questionRewrite: questionContext,
+          conversationHistoryMessages: conversationHistory.length,
           retrievalQuery,
+          retrievalMode: searchResult.retrievalMode,
+          embedding: searchResult.embedding,
           totalRetrievedChunks: searchResult.chunks.length,
           topScore,
         } as Prisma.InputJsonValue,
@@ -327,6 +569,17 @@ export async function askRagQuestion(userId: string, input: AskQuestionInput) {
         provider: aiResponse.data.provider,
         model: aiResponse.data.model,
         grounded: aiResponse.data.grounded,
+        usage: aiResponse.data.usage,
+        originalQuestion: input.question,
+        standaloneQuestion: questionContext.standaloneQuestion,
+        wasFollowUp: questionContext.wasFollowUp,
+        questionRewriteConfidence: questionContext.confidence,
+        conversationHistoryMessages: conversationHistory.length,
+        confidence: aiResponse.data.confidence,
+        citationCount: aiResponse.data.citations.length,
+        needsEscalation: aiResponse.data.needsEscalation,
+        guardrailApproved: aiResponse.data.guardrails.approved,
+        promptVersion: aiResponse.data.promptVersion,
         fallbackUsed: aiResponse.data.fallbackUsed || false,
         retrievalQuery,
         totalRetrievedChunks: searchResult.chunks.length,
@@ -339,15 +592,27 @@ export async function askRagQuestion(userId: string, input: AskQuestionInput) {
       messageId: assistantMessage.id,
       answer: aiResponse.data.answer,
       sources,
+      citations: aiResponse.data.citations,
       retrievedChunks: searchResult.chunks,
       grounded: aiResponse.data.grounded,
+      usage: aiResponse.data.usage,
+      confidence: aiResponse.data.confidence,
+      needsEscalation: aiResponse.data.needsEscalation,
+      escalationReason: aiResponse.data.escalationReason,
+      guardrails: aiResponse.data.guardrails,
+      promptVersion: aiResponse.data.promptVersion,
       model: aiResponse.data.model,
       provider: aiResponse.data.provider,
       fallbackUsed: aiResponse.data.fallbackUsed || false,
       providerErrors: aiResponse.data.providerErrors || [],
-      agentPlan: aiResponse.data.agentPlan || null,
-      quality: aiResponse.data.quality || null,
+      originalQuestion: input.question,
+      standaloneQuestion: questionContext.standaloneQuestion,
+      wasFollowUp: questionContext.wasFollowUp,
+      questionRewrite: questionContext,
+      conversationHistoryMessages: conversationHistory.length,
       retrievalQuery,
+      retrievalMode: searchResult.retrievalMode,
+      embedding: searchResult.embedding,
     };
   } catch (error) {
     const errorMessage =
@@ -371,6 +636,10 @@ export async function askRagQuestion(userId: string, input: AskQuestionInput) {
           reason: "AI_GENERATION_FAILED",
           error: errorMessage,
           originalQuestion: input.question,
+          standaloneQuestion: questionContext.standaloneQuestion,
+          wasFollowUp: questionContext.wasFollowUp,
+          questionRewrite: questionContext,
+          conversationHistoryMessages: conversationHistory.length,
           retrievalQuery,
           totalRetrievedChunks: searchResult.chunks.length,
           topScore,
@@ -400,6 +669,10 @@ export async function askRagQuestion(userId: string, input: AskQuestionInput) {
       retrievedChunks: searchResult.chunks,
       grounded: false,
       model: null,
+      standaloneQuestion: questionContext.standaloneQuestion,
+      wasFollowUp: questionContext.wasFollowUp,
+      questionRewrite: questionContext,
+      conversationHistoryMessages: conversationHistory.length,
       provider: null,
       retrievalQuery,
     };

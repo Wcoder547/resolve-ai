@@ -18,6 +18,8 @@ from app.routes.chat import router as chat_router
 from fastapi import HTTPException, Request
 from app.core.metrics import metrics_middleware, metrics_response
 
+from app.routes import embeddings
+
 settings = get_settings()
 
 configure_logging(settings.environment)
@@ -136,3 +138,4 @@ def metrics(request: Request):
 
 app.include_router(ingestion_router, prefix="/ai", tags=["Ingestion"])
 app.include_router(chat_router, prefix="/ai", tags=["Chat"])
+app.include_router(embeddings.router, prefix="/ai", tags=["embeddings"])

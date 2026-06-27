@@ -38,3 +38,17 @@ services/api/prisma/dev.db
 
 # uploaded files
 services/api/uploads/
+
+
+services/api/coverage/
+services/api/eval-reports-test/
+services/api/.vitest/
+services/ai-service/.pytest_cache/
+
+
+backups/
+*.sql
+*.sql.gz
+*.dump
+backup.log
+prune.log

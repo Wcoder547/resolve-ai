@@ -1,0 +1,32 @@
+[
+  {
+    "id": "billing_subscription_locked_after_payment",
+    "question": "The customer paid successfully but their premium plan is still locked. What should support check?",
+    "limit": 5,
+    "expectedSourceNames": ["Billing Runbook"],
+    "expectedAnswerKeywords": ["payment", "subscription", "activation"],
+    "expectedContextKeywords": ["payment", "subscription"],
+    "requiresCitation": true,
+    "expectedNeedsEscalation": false
+  },
+  {
+    "id": "payment_success_subscription_not_active",
+    "question": "Payment is successful but subscription is not activated. What should support do?",
+    "limit": 5,
+    "expectedSourceNames": ["Billing Runbook"],
+    "expectedAnswerKeywords": ["webhook", "subscription", "retry"],
+    "expectedContextKeywords": ["webhook", "subscription", "activation"],
+    "requiresCitation": true,
+    "expectedNeedsEscalation": false
+  },
+  {
+    "id": "unrelated_motorcycle_question",
+    "question": "How do I repair a motorcycle engine?",
+    "limit": 5,
+    "expectedSourceNames": [],
+    "expectedAnswerKeywords": [],
+    "expectedContextKeywords": [],
+    "requiresCitation": false,
+    "expectedNoContext": true
+  }
+]
