@@ -3,6 +3,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from app.routes import agents
 
 from app.config.settings import get_settings
 from app.core.exceptions import (
@@ -139,3 +140,4 @@ def metrics(request: Request):
 app.include_router(ingestion_router, prefix="/ai", tags=["Ingestion"])
 app.include_router(chat_router, prefix="/ai", tags=["Chat"])
 app.include_router(embeddings.router, prefix="/ai", tags=["embeddings"])
+app.include_router(agents.router, prefix="/ai", tags=["agents"])

@@ -45,6 +45,12 @@ class Settings(BaseSettings):
 
     question_rewrite_prompt_version: str = "question-rewrite-v1"
 
+
+    agentic_runtime_enabled: bool = True
+    agentic_prompt_version: str = "agentic-runtime-v1"
+    agent_require_qa_approval: bool = True
+    agent_max_steps: int = 6
+
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
