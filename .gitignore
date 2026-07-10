@@ -52,3 +52,7 @@ backups/
 *.dump
 backup.log
 prune.log
+
+
+services/api/eval-reports-agentic/
+services/api/eval-reports-agentic-test/

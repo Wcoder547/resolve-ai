@@ -36,6 +36,33 @@ enum MessageRole {
   SYSTEM
 }
 
+enum AgentRunStatus {
+  RUNNING
+  COMPLETED
+  COMPLETED_WITH_GUARDRAIL_WARNING
+  FAILED
+}
+
+enum AgentToolApprovalStatus {
+  NOT_REQUIRED
+  PENDING
+  APPROVED
+  REJECTED
+  EXECUTED
+  FAILED
+}
+
+enum IntegrationProvider {
+  SLACK_WEBHOOK
+  TICKETING_WEBHOOK
+  GENERIC_WEBHOOK
+}
+
+enum IntegrationStatus {
+  ACTIVE
+  DISABLED
+}
+
 model User {
   id           String @id @default(uuid())
   name         String
@@ -46,6 +73,7 @@ model User {
   refreshTokens           RefreshToken[]
   auditLogs               AuditLog[]
   createdKnowledgeSources KnowledgeSource[]    @relation("KnowledgeSourceCreatedBy")
+  agentRuns               AgentRun[]
 
   conversations Conversation[]
   messages      Message[]
@@ -65,9 +93,13 @@ model Organization {
   knowledgeSources KnowledgeSource[]
   documents        Document[]
   documentChunks   DocumentChunk[]
+  agentRuns        AgentRun[]
 
   conversations Conversation[]
   messages      Message[]
+
+  integrations             OrganizationIntegration[]
+  integrationExecutionLogs IntegrationExecutionLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -216,6 +248,7 @@ model Conversation {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   messages     Message[]
+  agentRuns    AgentRun[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -239,6 +272,7 @@ model Message {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  agentRuns    AgentRun[]
 
   createdAt DateTime @default(now())
 
@@ -296,4 +330,168 @@ model OrganizationAiUsageDaily {
 
   @@unique([organizationId, date])
   @@index([organizationId, date])
+}
+
+model AgentRun {
+  id             String  @id @default(uuid())
+  externalRunId  String?
+  organizationId String
+  userId         String?
+  conversationId String?
+  messageId      String?
+
+  status AgentRunStatus @default(RUNNING)
+
+  question           String
+  standaloneQuestion String?
+  answer             String?
+
+  agentsUsed      Json?
+  citations       Json?
+  triage          Json?
+  retrievalReview Json?
+  diagnostic      Json?
+  resolution      Json?
+  qa              Json?
+  metadata        Json?
+
+  grounded         Boolean @default(false)
+  confidence       String?
+  needsEscalation  Boolean @default(false)
+  escalationReason String?
+
+  provider       String?
+  model          String?
+  promptVersion  String?
+  fallbackUsed   Boolean @default(false)
+  providerErrors Json?
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  message      Message?      @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  steps     AgentStep[]
+  toolCalls AgentToolCall[]
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([organizationId, createdAt])
+  @@index([userId, createdAt])
+  @@index([conversationId, createdAt])
+  @@index([messageId])
+  @@index([status])
+}
+
+model AgentStep {
+  id         String @id @default(uuid())
+  agentRunId String
+
+  agentName String
+  status    String
+
+  provider  String?
+  model     String?
+  latencyMs Int?
+
+  input  Json?
+  output Json?
+  error  String?
+
+  agentRun AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([agentRunId])
+  @@index([agentName])
+  @@index([status])
+}
+
+model AgentToolCall {
+  id         String @id @default(uuid())
+  agentRunId String
+
+  toolCallId       String?
+  toolName         String
+  toolCategory     String?
+  requiresApproval Boolean @default(false)
+
+  status         String
+  approvalStatus AgentToolApprovalStatus @default(NOT_REQUIRED)
+  reason         String?
+
+  latencyMs Int?
+
+  input  Json?
+  output Json?
+  error  String?
+
+  approvedByUserId String?
+  rejectedByUserId String?
+
+  approvedAt DateTime?
+  rejectedAt DateTime?
+  executedAt DateTime?
+
+  agentRun AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([agentRunId])
+  @@index([toolName])
+  @@index([status])
+  @@index([approvalStatus])
+  @@index([requiresApproval])
+}
+
+model OrganizationIntegration {
+  id             String              @id @default(uuid())
+  organizationId String
+  provider       IntegrationProvider
+  name           String
+  status         IntegrationStatus   @default(ACTIVE)
+
+  config               Json?
+  encryptedCredentials String
+
+  createdByUserId String?
+  updatedByUserId String?
+
+  lastUsedAt DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, provider])
+  @@index([organizationId, status])
+}
+
+model IntegrationExecutionLog {
+  id             String  @id @default(uuid())
+  organizationId String
+  integrationId  String?
+
+  provider IntegrationProvider
+  toolName String
+  status   String
+
+  request  Json?
+  response Json?
+  error    String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([integrationId])
+  @@index([provider])
+  @@index([status])
 }

@@ -1,7 +1,9 @@
 import type { UserRole } from "@prisma/client";
+import type { Request } from "express";
 
 export type AuthenticatedUser = {
   id: string;
+  userId: string;
   email: string;
 };
 
@@ -19,7 +21,7 @@ declare global {
   }
 }
 
-export type AuthenticatedRequest = Express.Request & {
+export type AuthenticatedRequest = Request & {
   user: AuthenticatedUser;
   organization?: RequestOrganizationContext;
 };

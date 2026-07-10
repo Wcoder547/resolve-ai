@@ -3,21 +3,26 @@ import { prisma } from "../lib/prisma.js";
 
 export async function clearTestDatabase() {
   await prisma.$executeRawUnsafe(`
-    TRUNCATE TABLE
-      "AiUsageEvent",
-      "OrganizationAiUsageDaily",
-      "Message",
-      "Conversation",
-      "DocumentChunk",
-      "Document",
-      "KnowledgeSource",
-      "AuditLog",
-      "RefreshToken",
-      "OrganizationMember",
-      "Organization",
-      "User"
-    RESTART IDENTITY CASCADE;
-  `);
+  TRUNCATE TABLE
+    "IntegrationExecutionLog",
+    "OrganizationIntegration",
+    "AgentToolCall",
+    "AgentStep",
+    "AgentRun",
+    "AiUsageEvent",
+    "OrganizationAiUsageDaily",
+    "Message",
+    "Conversation",
+    "DocumentChunk",
+    "Document",
+    "KnowledgeSource",
+    "AuditLog",
+    "RefreshToken",
+    "OrganizationMember",
+    "Organization",
+    "User"
+  RESTART IDENTITY CASCADE;
+`);
 }
 
 beforeEach(async () => {

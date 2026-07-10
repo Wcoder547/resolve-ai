@@ -1,0 +1,106 @@
+groups:
+  - name: resolveai_service_health
+    rules:
+      - alert: ResolveAIAPIDown
+        expr: up{job="resolveai-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: api
+        annotations:
+          summary: "ResolveAI API is down"
+          description: "Prometheus cannot scrape the ResolveAI API for more than 1 minute."
+
+      - alert: ResolveAIAIServiceDown
+        expr: up{job="resolveai-ai-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: ai-service
+        annotations:
+          summary: "ResolveAI AI service is down"
+          description: "Prometheus cannot scrape the ResolveAI AI service for more than 1 minute."
+
+      - alert: ResolveAIHighAPIErrorRate
+        expr: |
+          sum(rate(resolveai_api_http_requests_total{status_code=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(resolveai_api_http_requests_total[5m])), 1)
+          > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: api
+        annotations:
+          summary: "High API 5xx error rate"
+          description: "More than 5% of API requests are returning 5xx errors over 5 minutes."
+
+      - alert: ResolveAIHighAPILatency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(resolveai_api_http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 3
+        for: 5m
+        labels:
+          severity: warning
+          service: api
+        annotations:
+          summary: "High API latency"
+          description: "API p95 latency is above 3 seconds for more than 5 minutes."
+
+      - alert: ResolveAIHighAIServiceErrorRate
+        expr: |
+          sum(rate(resolveai_ai_http_requests_total{status_code=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(resolveai_ai_http_requests_total[5m])), 1)
+          > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: ai-service
+        annotations:
+          summary: "High AI service 5xx error rate"
+          description: "More than 5% of AI service requests are returning 5xx errors over 5 minutes."
+
+  - name: resolveai_agentic_operations
+    rules:
+      - alert: ResolveAIAgentRunsFailing
+        expr: resolveai_api_agent_runs_failed_total > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: agentic-runtime
+        annotations:
+          summary: "Agent runs are failing"
+          description: "One or more agent runs are currently marked as failed."
+
+      - alert: ResolveAIToolApprovalsPendingTooLong
+        expr: resolveai_api_agent_tool_calls_pending_total > 5
+        for: 15m
+        labels:
+          severity: warning
+          service: tool-approval
+        annotations:
+          summary: "Too many pending tool approvals"
+          description: "More than 5 agent tool calls have been pending approval for more than 15 minutes."
+
+      - alert: ResolveAIIntegrationFailures
+        expr: resolveai_api_integration_failures_total > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: integrations
+        annotations:
+          summary: "External integration failures detected"
+          description: "One or more integration executions failed."
+
+      - alert: ResolveAIDailyAITokenUsageHigh
+        expr: resolveai_api_ai_usage_daily_tokens_total > 160000
+        for: 10m
+        labels:
+          severity: warning
+          service: ai-usage
+        annotations:
+          summary: "Daily AI token usage is high"
+          description: "Daily AI token usage is above 160,000 tokens."

@@ -21,6 +21,8 @@
     "embeddings:backfill:start": "node dist/scripts/backfill-embeddings.js",
     "eval:rag": "tsx src/scripts/run-rag-evals.ts",
     "eval:rag:start": "node dist/scripts/run-rag-evals.js",
+    "eval:agentic": "tsx src/scripts/run-agentic-evals.ts",
+    "eval:agentic:start": "node dist/scripts/run-agentic-evals.js",
     "test": "dotenv -e .env.test -- vitest run",
     "test:watch": "dotenv -e .env.test -- vitest",
     "test:coverage": "dotenv -e .env.test -- vitest run --coverage",

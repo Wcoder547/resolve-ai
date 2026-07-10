@@ -19,7 +19,7 @@ const envSchema = z
       .string()
       .min(20, "JWT_REFRESH_SECRET must be at least 20 characters"),
 
-    AI_SERVICE_URL: z.string().url("AI_SERVICE_URL must be a valid URL"),
+    AI_SERVICE_URL: z.url("AI_SERVICE_URL must be a valid URL"),
 
     CORS_ORIGIN: z.string().default("http://localhost:3000"),
 
@@ -41,6 +41,46 @@ const envSchema = z
     AI_USAGE_TRACKING_ENABLED: z.coerce.boolean().default(true),
 
     AI_DAILY_REQUEST_LIMIT: z.coerce.number().min(1).max(1000000).default(1000),
+
+    AGENTIC_CHAT_ENABLED: z.coerce.boolean().default(true),
+    AGENT_TOOL_APPROVAL_ENABLED: z.coerce.boolean().default(true),
+
+    AGENT_TOOL_EXECUTION_TIMEOUT_MS: z.coerce
+      .number()
+      .min(5000)
+      .max(180000)
+      .default(60000),
+
+    AGENT_TOOLS_ENABLED: z.coerce.boolean().default(true),
+
+    INTEGRATIONS_ENABLED: z.coerce.boolean().default(true),
+
+    INTEGRATION_SECRET_ENCRYPTION_KEY: z
+      .string()
+      .min(16)
+      .default("test_integration_secret_key_123456789"),
+
+    INTEGRATION_HTTP_TIMEOUT_MS: z.coerce
+      .number()
+      .min(5000)
+      .max(120000)
+      .default(30000),
+
+    AGENTIC_CHAT_TIMEOUT_MS: z.coerce
+      .number()
+      .min(10000)
+      .max(300000)
+      .default(180000),
+
+    AGENTIC_EVAL_USER_EMAIL: z
+      .string()
+      .email()
+      .optional()
+      .default("waseem@example.com"),
+
+    AGENTIC_EVAL_PASSING_SCORE: z.coerce.number().min(0).max(1).default(0.8),
+
+    AGENTIC_EVAL_OUTPUT_DIR: z.string().min(1).default("eval-reports-agentic"),
 
     AI_DAILY_TOKEN_LIMIT: z.coerce
       .number()
@@ -92,7 +132,6 @@ const envSchema = z
     RAG_MIN_HYBRID_SCORE: z.coerce.number().min(0).max(1).default(0.05),
 
     RAG_EVAL_USER_EMAIL: z
-      .string()
       .email()
       .optional()
       .default("waseem@example.com"),
@@ -116,7 +155,7 @@ const envSchema = z
       .default(5000),
     STORAGE_PROVIDER: z.enum(["local", "r2"]).default("local"),
 
-    REDIS_URL: z.string().url().default("redis://localhost:6379"),
+    REDIS_URL: z.url().default("redis://localhost:6379"),
 
     QUEUE_PREFIX: z.string().min(1).default("resolveai"),
 
@@ -127,6 +166,18 @@ const envSchema = z
       .default(2),
 
     INGESTION_JOB_ATTEMPTS: z.coerce.number().min(1).max(10).default(3),
+
+    SECURITY_STARTUP_CHECKS_ENABLED: z.coerce.boolean().default(true),
+
+    REQUIRE_HTTPS_IN_PRODUCTION: z.coerce.boolean().default(true),
+
+    TRUST_PROXY: z.coerce.boolean().default(false),
+
+    AGENT_RUN_DEBUG_PAYLOAD_ENABLED: z.coerce.boolean().default(false),
+
+    BLOCK_PRIVATE_NETWORK_INTEGRATIONS: z.coerce.boolean().default(true),
+
+    INTEGRATION_ALLOWED_HOSTS: z.string().default(""),
 
     INGESTION_JOB_BACKOFF_MS: z.coerce
       .number()
@@ -169,7 +220,7 @@ const parsedEnv = envSchema.safeParse(process.env);
 
 if (!parsedEnv.success) {
   console.error("Invalid environment variables:");
-  console.error(parsedEnv.error.flatten().fieldErrors);
+  console.error(z.treeifyError(parsedEnv.error));
   process.exit(1);
 }
 

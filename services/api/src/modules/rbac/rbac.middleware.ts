@@ -1,7 +1,7 @@
-import type { NextFunction, Response } from "express";
+import type { Request, RequestHandler } from "express";
 import { Prisma, UserRole } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
-import type { AuthenticatedRequest } from "../../types/express.js";
+import type { AuthenticatedUser } from "../../types/express.js";
 import { type Permission, roleHasPermission } from "./rbac.permissions.js";
 import { getPrimaryMembershipWithRole } from "./rbac.service.js";
 
@@ -30,18 +30,25 @@ async function writeForbiddenAuditLog(input: {
     .catch(() => null);
 }
 
-export function requirePermission(permission: Permission) {
-  return async (
-    req: AuthenticatedRequest,
-    _res: Response,
-    next: NextFunction
-  ) => {
+function requireAuthenticatedUser(req: Request): AuthenticatedUser {
+  if (!req.user) {
+    const error = new Error("Unauthorized.");
+    error.name = "UnauthorizedError";
+    throw error;
+  }
+
+  return req.user;
+}
+
+export function requirePermission(permission: Permission): RequestHandler {
+  return async (req, _res, next) => {
     try {
-      const membership = await getPrimaryMembershipWithRole(req.user.id);
+      const user = requireAuthenticatedUser(req);
+      const membership = await getPrimaryMembershipWithRole(user.id);
 
       if (!roleHasPermission(membership.role, permission)) {
         await writeForbiddenAuditLog({
-          userId: req.user.id,
+          userId: user.id,
           organizationId: membership.organizationId,
           permission,
           path: req.originalUrl,
@@ -65,18 +72,15 @@ export function requirePermission(permission: Permission) {
   };
 }
 
-export function requireRole(allowedRoles: UserRole[]) {
-  return async (
-    req: AuthenticatedRequest,
-    _res: Response,
-    next: NextFunction
-  ) => {
+export function requireRole(allowedRoles: UserRole[]): RequestHandler {
+  return async (req, _res, next) => {
     try {
-      const membership = await getPrimaryMembershipWithRole(req.user.id);
+      const user = requireAuthenticatedUser(req);
+      const membership = await getPrimaryMembershipWithRole(user.id);
 
       if (!allowedRoles.includes(membership.role)) {
         await writeForbiddenAuditLog({
-          userId: req.user.id,
+          userId: user.id,
           organizationId: membership.organizationId,
           allowedRoles,
           path: req.originalUrl,

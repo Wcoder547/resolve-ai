@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { env } from "../../config/env.js";
 import { getMetricsContentType, getMetricsText } from "../../lib/metrics.js";
 import { getLivenessStatus, getReadinessStatus } from "./health.service.js";
+import { updateOperationalMetrics } from "../../lib/operational-metrics.js";
 
 function isAuthorizedForMetrics(req: Request) {
   if (!env.METRICS_TOKEN) {
@@ -56,7 +57,8 @@ export async function metricsController(req: Request, res: Response) {
       message: "Unauthorized."
     });
   }
-
+  await updateOperationalMetrics();
+  
   res.setHeader("Content-Type", getMetricsContentType());
 
   return res.status(200).send(await getMetricsText());

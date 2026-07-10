@@ -68,6 +68,12 @@ services:
       METRICS_TOKEN: ${METRICS_TOKEN}
     expose:
       - "8000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=256m
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/live"]
       interval: 15s
@@ -109,6 +115,10 @@ services:
       - "${API_PORT}:5000"
     volumes:
       - api_uploads:/app/uploads
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       postgres:
         condition: service_healthy
@@ -146,6 +156,12 @@ services:
     command: ["node", "dist/workers/knowledge-ingestion.worker.js"]
     volumes:
       - api_uploads:/app/uploads
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=256m
     depends_on:
       postgres:
         condition: service_healthy

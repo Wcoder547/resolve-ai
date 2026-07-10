@@ -6,6 +6,9 @@ import pinoHttp from "pino-http";
 
 import { env } from "./config/env.js";
 import { logger } from "./lib/logger.js";
+import { applySecurityMiddleware } from "./middleware/security.middleware.js";
+
+import integrationRoutes from "./modules/integrations/integration.routes.js";
 
 import { errorMiddleware } from "./middleware/error.middleware.js";
 import { metricsMiddleware } from "./middleware/metrics.middleware.js";
@@ -13,7 +16,7 @@ import { notFoundMiddleware } from "./middleware/not-found.middleware.js";
 import {
   aiChatRateLimiter,
   apiRateLimiter,
-  authRateLimiter
+  authRateLimiter,
 } from "./middleware/rate-limit.middleware.js";
 import { requestIdMiddleware } from "./middleware/request-id.middleware.js";
 
@@ -33,6 +36,8 @@ function getAllowedOrigins() {
   return env.CORS_ORIGIN.split(",").map((origin) => origin.trim());
 }
 
+
+
 export function createApp() {
   const app = express();
 
@@ -40,45 +45,47 @@ export function createApp() {
 
   app.use(requestIdMiddleware);
 
+  applySecurityMiddleware(app);
+
   app.use(
     pinoHttp({
       logger,
       customProps: (req) => {
         return {
-          requestId: (req as Request & { id?: string }).id
+          requestId: (req as Request & { id?: string }).id,
         };
-      }
-    })
+      },
+    }),
   );
 
   app.use(
     helmet({
       crossOriginResourcePolicy: {
-        policy: "cross-origin"
-      }
-    })
+        policy: "cross-origin",
+      },
+    }),
   );
 
   app.use(
     cors({
       origin: getAllowedOrigins(),
-      credentials: true
-    })
+      credentials: true,
+    }),
   );
 
   app.use(compression());
 
   app.use(
     express.json({
-      limit: env.REQUEST_BODY_LIMIT
-    })
+      limit: env.REQUEST_BODY_LIMIT,
+    }),
   );
 
   app.use(
     express.urlencoded({
       extended: true,
-      limit: env.REQUEST_BODY_LIMIT
-    })
+      limit: env.REQUEST_BODY_LIMIT,
+    }),
   );
 
   app.use(metricsMiddleware);
@@ -88,7 +95,7 @@ export function createApp() {
       service: "ResolveAI API Gateway",
       status: "running",
       version: "1.0.0",
-      environment: env.NODE_ENV
+      environment: env.NODE_ENV,
     });
   });
 
@@ -102,6 +109,7 @@ export function createApp() {
   app.use("/api/chat", aiChatRateLimiter, chatRoutes);
   app.use("/api/usage", usageRoutes);
   app.use("/api/rbac", rbacRoutes);
+  app.use("/api/integrations", integrationRoutes);
 
   app.use(notFoundMiddleware);
   app.use(errorMiddleware);

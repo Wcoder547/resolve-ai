@@ -1,0 +1,53 @@
+[
+  {
+    "id": "billing_subscription_activation_agentic",
+    "question": "Payment is successful but subscription is not activated. What should support do?",
+    "limit": 5,
+    "expectedNoContext": false,
+    "requiredAgents": [
+      "triage_agent",
+      "retrieval_agent",
+      "diagnostic_agent",
+      "resolution_agent",
+      "qa_agent"
+    ],
+    "expectedAnswerKeywords": [
+      "payment",
+      "subscription",
+      "activation"
+    ],
+    "requiresCitation": true,
+    "requiresGrounded": true
+  },
+  {
+    "id": "billing_create_ticket_requires_approval",
+    "question": "Payment is successful but subscription is not activated. Create a support ticket for this issue after approval.",
+    "limit": 5,
+    "expectedNoContext": false,
+    "requiredAgents": [
+      "triage_agent",
+      "retrieval_agent",
+      "diagnostic_agent",
+      "tool_agent",
+      "resolution_agent",
+      "qa_agent"
+    ],
+    "expectedPendingToolNames": [
+      "create_support_ticket"
+    ],
+    "forbiddenExecutedToolNames": [
+      "create_support_ticket"
+    ],
+    "requiresCitation": true,
+    "requiresGrounded": true
+  },
+  {
+    "id": "unrelated_motorcycle_no_context",
+    "question": "How do I repair a motorcycle engine?",
+    "limit": 5,
+    "expectedNoContext": true,
+    "requiredAgents": [],
+    "requiresCitation": false,
+    "requiresGrounded": false
+  }
+]

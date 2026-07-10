@@ -79,6 +79,7 @@ class AgentResolveData(BaseModel):
     status: str
     agents_used: List[str] = Field(..., alias="agentsUsed")
     steps: List[AgentStep]
+    tool_calls: List[AgentToolCall] = Field(default_factory=list, alias="toolCalls")
 
     sources: List[AgentSource]
     citations: List[AgentCitation]
@@ -109,3 +110,20 @@ class AgentResolveResponse(BaseModel):
     success: bool
     message: str
     data: AgentResolveData
+
+class AgentToolCall(BaseModel):
+    tool_call_id: str = Field(..., alias="toolCallId")
+    tool_name: str = Field(..., alias="toolName")
+    tool_category: str = Field(..., alias="toolCategory")
+    requires_approval: bool = Field(..., alias="requiresApproval")
+    approval_status: str = Field(..., alias="approvalStatus")
+    status: str
+    reason: Optional[str] = None
+    latency_ms: int = Field(..., alias="latencyMs")
+    input: Dict[str, Any]
+    output: Dict[str, Any]
+    error: Optional[str] = None
+
+    model_config = {
+        "populate_by_name": True
+    }

@@ -73,7 +73,11 @@ def deterministic_qa_check(payload: AgentResolveRequest, resolution_output: dict
     }
 
 
-def run_qa_agent(payload: AgentResolveRequest, resolution_output: dict):
+def run_qa_agent(
+    payload: AgentResolveRequest,
+    resolution_output: dict,
+    tool_results: list | None = None,
+):
     settings = get_settings()
 
     deterministic = deterministic_qa_check(payload, resolution_output)
@@ -88,13 +92,16 @@ Source catalog:
 Retrieved context:
 {compact_text(payload.context, 9000)}
 
+Tool execution results:
+{tool_results or []}
+
 Resolution output:
 {resolution_output}
 
 Deterministic citation check:
 {deterministic}
 
-Review the resolution quality.
+Review the resolution quality. Make sure mock tool output is not presented as real customer/system data.
 """
 
     llm_result = run_json_agent(

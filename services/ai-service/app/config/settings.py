@@ -51,6 +51,12 @@ class Settings(BaseSettings):
     agent_require_qa_approval: bool = True
     agent_max_steps: int = 6
 
+    agent_tools_enabled: bool = True
+    agent_max_tool_calls: int = 3
+    agent_allowed_tools: str = "check_customer_status,check_subscription_status,create_support_ticket_draft,create_escalation_summary"
+    agent_approval_required_tools: str = "create_support_ticket"
+
+    
     @property
     def is_production(self) -> bool:
         return self.environment == "production"

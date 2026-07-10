@@ -72,7 +72,6 @@ type RagChatResponse = {
     escalationReason?: string | null;
     guardrails: RagGuardrail;
     promptVersion: string;
-    RagChatResponse.data
     fallbackUsed?: boolean;
     providerErrors?: string[];
   };

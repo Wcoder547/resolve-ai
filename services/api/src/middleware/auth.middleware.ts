@@ -1,18 +1,9 @@
-import { NextFunction, Request, Response } from "express";
+import type { RequestHandler } from "express";
 import { verifyAccessToken } from "../utils/jwt.js";
 
-export interface AuthenticatedRequest extends Request {
-  user?: {
-    userId: string;
-    email: string;
-  };
-}
+export type { AuthenticatedRequest } from "../types/express.js";
 
-export function requireAuth(
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction
-) {
+export const requireAuth: RequestHandler = (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
 
@@ -27,6 +18,7 @@ export function requireAuth(
     const payload = verifyAccessToken(token);
 
     req.user = {
+      id: payload.userId,
       userId: payload.userId,
       email: payload.email
     };
@@ -38,4 +30,4 @@ export function requireAuth(
       message: "Unauthorized. Invalid or expired token."
     });
   }
-}
+};

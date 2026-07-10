@@ -1,3 +1,5 @@
+import json
+
 from app.config.settings import get_settings
 from app.agents.agent_utils import (
     build_source_catalog,
@@ -13,8 +15,9 @@ You are the ResolveAI Resolution Agent.
 
 Your job:
 - Create the final support-ready resolution.
-- Use only retrieved context for factual claims.
-- Every important factual claim must include citation labels like [S1].
+- Use only retrieved context for factual support/runbook claims.
+- Tool results may be used as workflow assistance, but mock tool output must not be presented as real customer/system data.
+- Every important factual claim from retrieved context must include citation labels like [S1].
 - Use only citation labels from the source catalog.
 - Include clear recommended steps.
 - Include escalation if required.
@@ -34,6 +37,12 @@ Required JSON shape:
       "reason": "why this source supports the answer"
     }
   ],
+  "toolsUsed": [
+    {
+      "toolName": "tool name",
+      "reason": "how the tool result helped"
+    }
+  ],
   "confidence": "low | medium | high",
   "needsEscalation": false,
   "escalationReason": null
@@ -46,6 +55,8 @@ def run_resolution_agent(
     triage_output: dict,
     retrieval_output: dict,
     diagnostic_output: dict,
+    tool_plan_output: dict | None = None,
+    tool_results: list | None = None,
 ):
     settings = get_settings()
 
@@ -64,13 +75,19 @@ Source catalog:
 {source_catalog_text}
 
 Triage output:
-{triage_output}
+{json.dumps(triage_output, indent=2)}
 
 Retrieval review output:
-{retrieval_output}
+{json.dumps(retrieval_output, indent=2)}
 
 Diagnostic output:
-{diagnostic_output}
+{json.dumps(diagnostic_output, indent=2)}
+
+Tool plan output:
+{json.dumps(tool_plan_output or {}, indent=2)}
+
+Tool execution results:
+{json.dumps(tool_results or [], indent=2)}
 
 Retrieved context:
 {compact_text(payload.context, 9000)}
@@ -84,7 +101,7 @@ Create the final resolution JSON.
             "system_prompt": SYSTEM_PROMPT,
             "user_prompt": user_prompt,
             "temperature": 0.1,
-            "max_tokens": 1200,
+            "max_tokens": 1300,
             "prompt_version": settings.agentic_prompt_version,
         }
     )

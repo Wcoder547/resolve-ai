@@ -16,9 +16,14 @@ function getStatusCode(error: AppError) {
   if (error.name === "ForbiddenError") return 403;
   if (error.name === "NotFoundError") return 404;
   if (error.name === "ConflictError") return 409;
+  if (error.name === "ToolExecutionTimeoutError") return 504;
+  if (error.name === "ToolExecutionError") return 502;
+  if (error.name === "IntegrationExecutionError") return 502;
   if (error.name === "UsageLimitError") return 429;
   if (error.name === "AIServiceTimeoutError") return 504;
   if (error.name === "AIServiceError") return 502;
+  if (error.name === "AgenticServiceTimeoutError") return 504;
+  if (error.name === "AgenticServiceError") return 502;
 
   return 500;
 }
@@ -27,7 +32,7 @@ export function errorMiddleware(
   error: AppError,
   req: Request,
   res: Response,
-  _next: NextFunction
+  _next: NextFunction,
 ) {
   const statusCode = getStatusCode(error);
 
@@ -36,16 +41,16 @@ export function errorMiddleware(
       error: {
         name: error.name,
         message: error.message,
-        stack: isProduction ? undefined : error.stack
+        stack: isProduction ? undefined : error.stack,
       },
       request: {
         method: req.method,
         url: req.originalUrl,
-        requestId: (req as Request & { id?: string }).id
+        requestId: (req as Request & { id?: string }).id,
       },
-      statusCode
+      statusCode,
     },
-    "Request failed"
+    "Request failed",
   );
 
   return res.status(statusCode).json({
@@ -58,7 +63,7 @@ export function errorMiddleware(
       ? undefined
       : {
           name: error.name,
-          stack: error.stack
-        }
+          stack: error.stack,
+        },
   });
 }

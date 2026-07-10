@@ -14,6 +14,8 @@ from app.services.rag_answer_quality import (
     map_citation_reasons,
 )
 
+from app.agents.tool_agent import run_tool_agent
+from app.agents.tools.executor import execute_tool_plan
 
 def normalize_confidence(value):
     confidence = str(value or "medium").lower().strip()
@@ -137,11 +139,28 @@ def resolve_with_agents(payload: AgentResolveRequest):
 
     diagnostic_output = diagnostic_result["output"]
 
+        tool_agent_result = run_tool_agent(
+        payload=payload,
+        triage_output=triage_output,
+        retrieval_output=retrieval_output,
+        diagnostic_output=diagnostic_output,
+    )
+    steps.append(tool_agent_result["step"])
+    provider_errors.extend(tool_agent_result["providerErrors"])
+    fallback_used = fallback_used or tool_agent_result["fallbackUsed"]
+    final_provider = tool_agent_result["provider"]
+    final_model = tool_agent_result["model"]
+
+    tool_plan_output = tool_agent_result["output"]
+    tool_results = execute_tool_plan(tool_plan_output)
+
     resolution_result = run_resolution_agent(
         payload=payload,
         triage_output=triage_output,
         retrieval_output=retrieval_output,
         diagnostic_output=diagnostic_output,
+        tool_plan_output=tool_plan_output,
+        tool_results=tool_results,
     )
     steps.append(resolution_result["step"])
     provider_errors.extend(resolution_result["providerErrors"])
@@ -154,6 +173,7 @@ def resolve_with_agents(payload: AgentResolveRequest):
     qa_result = run_qa_agent(
         payload=payload,
         resolution_output=resolution_output,
+        tool_results=tool_results,
     )
     steps.append(qa_result["step"])
     provider_errors.extend(qa_result["providerErrors"])
@@ -194,10 +214,12 @@ def resolve_with_agents(payload: AgentResolveRequest):
             "triage_agent",
             "retrieval_agent",
             "diagnostic_agent",
+            "tool_agent",
             "resolution_agent",
             "qa_agent",
         ],
         "steps": steps,
+        "toolCalls": tool_results,
         "sources": payload.sources,
         "citations": final["citations"],
         "triage": triage_output,

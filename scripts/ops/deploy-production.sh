@@ -21,6 +21,9 @@ echo "Step 2: Pull latest code"
 git fetch origin main
 git reset --hard origin/main
 
+echo "Running production security check..."
+./scripts/ops/security-check.sh
+
 echo ""
 echo "Step 3: Build production images"
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build
