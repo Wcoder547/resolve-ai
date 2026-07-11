@@ -1,4 +1,4 @@
-import { Response } from "express";
+import { Response, Request } from "express";
 import { z } from "zod";
 import type { AuthenticatedRequest } from "../../middleware/auth.middleware.js";
 import {
@@ -55,11 +55,12 @@ function handleKnowledgeError(error: unknown, res: Response) {
 }
 
 export async function uploadKnowledgeSourceController(
-  req: AuthenticatedRequest,
+  _req: Request,
   res: Response,
 ) {
+    const req = _req as AuthenticatedRequest;
   try {
-    const userId = req.user?.userId;
+    const userId = req.user?.id;
     const file = req.file;
     const name = typeof req.body.name === "string" ? req.body.name : undefined;
 
@@ -112,11 +113,12 @@ export async function uploadKnowledgeSourceController(
 }
 
 export async function listKnowledgeSourcesController(
-  req: AuthenticatedRequest,
+  _req: Request,
   res: Response,
 ) {
+    const req = _req as AuthenticatedRequest;
   try {
-    const userId = req.user?.userId;
+    const userId = req.user?.id ;
 
     if (!userId) {
       return res.status(401).json({
@@ -139,11 +141,12 @@ export async function listKnowledgeSourcesController(
 }
 
 export async function getKnowledgeSourceController(
-  req: AuthenticatedRequest,
+  _req: Request,
   res: Response,
 ) {
+    const req = _req as AuthenticatedRequest;
   try {
-    const userId = req.user?.userId;
+    const userId = req.user?.id;
     const sourceId =
       typeof req.params.sourceId === "string" ? req.params.sourceId : undefined;
 
@@ -175,11 +178,12 @@ export async function getKnowledgeSourceController(
 }
 
 export async function deleteKnowledgeSourceController(
-  req: AuthenticatedRequest,
+  _req: Request,
   res: Response,
 ) {
+    const req = _req as AuthenticatedRequest;
   try {
-    const userId = req.user?.userId;
+    const userId = req.user?.id;
     const sourceId =
       typeof req.params.sourceId === "string" ? req.params.sourceId : undefined;
 
@@ -209,13 +213,14 @@ export async function deleteKnowledgeSourceController(
 }
 
 export async function ingestKnowledgeSourceController(
-  req: AuthenticatedRequest,
+  _req: Request,
   res: Response,
 ) {
+    const req = _req as AuthenticatedRequest;
   try {
     const payload = await getKnowledgeIngestionQueuePayload(
-  req.user?.id,
-  req.params.sourceId
+   req.user?.id,
+   req.params.sourceId
 );
 
 const job = await enqueueKnowledgeIngestionJob({
@@ -244,11 +249,12 @@ return res.status(202).json({
 }
 
 export async function searchKnowledgeController(
-  req: AuthenticatedRequest,
+  _req: Request,
   res: Response,
 ) {
+    const req = _req as AuthenticatedRequest;
   try {
-    const userId = req.user?.userId;
+    const userId = req.user?.id;
 
     if (!userId) {
       return res.status(401).json({

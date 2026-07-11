@@ -139,7 +139,7 @@ def resolve_with_agents(payload: AgentResolveRequest):
 
     diagnostic_output = diagnostic_result["output"]
 
-        tool_agent_result = run_tool_agent(
+    tool_agent_result = run_tool_agent(
         payload=payload,
         triage_output=triage_output,
         retrieval_output=retrieval_output,

@@ -1,15 +1,16 @@
-import type { Response } from "express";
+import type { Response, Request } from "express";
 import type { AuthenticatedRequest } from "../../types/express.js";
 import { askAgenticQuestion } from "./chat.agent.service.js";
 import { askQuestionSchema } from "./chat.validation.js";
 
 export async function askAgenticQuestionController(
-  req: AuthenticatedRequest,
+  _req: Request,
   res: Response
 ) {
-  const input = askQuestionSchema.parse(req.body);
+    const req = _req as AuthenticatedRequest;
+  const input = askQuestionSchema.parse(_req.body);
 
-  const result = await askAgenticQuestion(req.user.id, input);
+  const result = await askAgenticQuestion(_req.user.id, input);
 
   return res.json({
     success: true,

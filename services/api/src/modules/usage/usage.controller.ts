@@ -1,4 +1,4 @@
-import type { Response } from "express";
+import type { Response, Request } from "express";
 import { prisma } from "../../lib/prisma.js";
 import { AuthenticatedRequest } from "../../types/express.js";
 import { getOrganizationAiUsageSummary } from "./usage.service.js";
@@ -23,10 +23,11 @@ async function getPrimaryMembership(userId: string) {
 }
 
 export async function getAiUsageSummaryController(
-  req: AuthenticatedRequest,
+  _req: Request,
   res: Response
 ) {
-  const membership = await getPrimaryMembership(req.user.id);
+    const req = _req as AuthenticatedRequest;
+  const membership = await getPrimaryMembership(_req.user.id);
 
   const summary = await getOrganizationAiUsageSummary(
     membership.organizationId
@@ -40,12 +41,13 @@ export async function getAiUsageSummaryController(
 }
 
 export async function listAiUsageEventsController(
-  req: AuthenticatedRequest,
+  _req: Request,
   res: Response
 ) {
-  const membership = await getPrimaryMembership(req.user.id);
+    const req = _req as AuthenticatedRequest;
+  const membership = await getPrimaryMembership(_req.user.id);
 
-  const limit = Math.min(Number(req.query.limit || 50), 100);
+  const limit = Math.min(Number(_req.query.limit || 50), 100);
 
   const events = await prisma.aiUsageEvent.findMany({
     where: {

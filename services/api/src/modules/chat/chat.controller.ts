@@ -1,4 +1,4 @@
-import { Response } from "express";
+import { Response, Request } from "express";
 import { z } from "zod";
 import type { AuthenticatedRequest } from "../../middleware/auth.middleware.js";
 import { askQuestionSchema } from "./chat.validation.js";
@@ -36,11 +36,12 @@ function handleChatError(error: unknown, res: Response) {
 }
 
 export async function askQuestionController(
-  req: AuthenticatedRequest,
+  _req: Request,
   res: Response
 ) {
+    const req = _req as AuthenticatedRequest;
   try {
-    const userId = req.user?.userId;
+    const userId = _req.user?.userId;
 
     if (!userId) {
       return res.status(401).json({
@@ -49,7 +50,7 @@ export async function askQuestionController(
       });
     }
 
-    const input = askQuestionSchema.parse(req.body);
+    const input = askQuestionSchema.parse(_req.body);
     const result = await askRagQuestion(userId, input);
 
     return res.json({
@@ -64,11 +65,12 @@ export async function askQuestionController(
 
 
 export async function listConversationsController(
-  req: AuthenticatedRequest,
+  _req: Request,
   res: Response
 ) {
+    const req = _req as AuthenticatedRequest;
   try {
-    const userId = req.user?.userId;
+    const userId = _req.user?.userId;
 
     if (!userId) {
       return res.status(401).json({
@@ -91,14 +93,15 @@ export async function listConversationsController(
 }
 
 export async function getConversationController(
-  req: AuthenticatedRequest,
+  _req: Request,
   res: Response
 ) {
+    const req = _req as AuthenticatedRequest;
   try {
-    const userId = req.user?.userId;
+    const userId = _req.user?.userId;
     const conversationId =
-      typeof req.params.conversationId === "string"
-        ? req.params.conversationId
+      typeof _req.params.conversationId === "string"
+        ? _req.params.conversationId
         : undefined;
 
     if (!userId) {
@@ -129,14 +132,15 @@ export async function getConversationController(
 }
 
 export async function deleteConversationController(
-  req: AuthenticatedRequest,
+  _req: Request,
   res: Response
 ) {
+    const req = _req as AuthenticatedRequest;
   try {
-    const userId = req.user?.userId;
+    const userId = _req.user?.userId;
     const conversationId =
-      typeof req.params.conversationId === "string"
-        ? req.params.conversationId
+      typeof _req.params.conversationId === "string"
+        ? _req.params.conversationId
         : undefined;
 
     if (!userId) {

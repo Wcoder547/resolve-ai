@@ -23,6 +23,7 @@ import {
   serializeVector,
 } from "./knowledge.embedding.js";
 import { logger } from "../../lib/logger.js";
+import { env } from "../../config/env.js";
 
 type UploadKnowledgeSourceInput = {
   userId: string;

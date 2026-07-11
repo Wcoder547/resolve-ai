@@ -41,6 +41,7 @@ router.post(
   searchKnowledgeController
 );
 
+//manual-ingestion
 router.post(
   "/:sourceId/ingest",
   requirePermission(PERMISSIONS.KNOWLEDGE_INGEST),

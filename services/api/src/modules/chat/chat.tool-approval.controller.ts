@@ -1,4 +1,4 @@
-import type { Response } from "express";
+import type { Response, Request } from "express";
 import type { AuthenticatedRequest } from "../../types/express.js";
 import {
   approveAgentToolCall,
@@ -8,10 +8,11 @@ import {
 import { rejectToolCallSchema } from "./chat.tool-approval.validation.js";
 
 export async function listPendingAgentToolCallsController(
-  req: AuthenticatedRequest,
+  _req: Request,
   res: Response
 ) {
-  const result = await listPendingAgentToolCalls(req.user.id);
+    const req = _req as AuthenticatedRequest;
+  const result = await listPendingAgentToolCalls(_req.user.id);
 
   return res.json({
     success: true,
@@ -21,11 +22,12 @@ export async function listPendingAgentToolCallsController(
 }
 
 export async function approveAgentToolCallController(
-  req: AuthenticatedRequest,
+  _req: Request,
   res: Response
 ) {
+    const req = _req as AuthenticatedRequest;
   const toolCallId =
-    typeof req.params.toolCallId === "string" ? req.params.toolCallId : undefined;
+    typeof _req.params.toolCallId === "string" ? _req.params.toolCallId : undefined;
 
   if (!toolCallId) {
     return res.status(400).json({
@@ -35,7 +37,7 @@ export async function approveAgentToolCallController(
   }
 
   const result = await approveAgentToolCall({
-    userId: req.user.id,
+    userId: _req.user.id,
     toolCallRecordId: toolCallId
   });
 
@@ -47,11 +49,12 @@ export async function approveAgentToolCallController(
 }
 
 export async function rejectAgentToolCallController(
-  req: AuthenticatedRequest,
+  _req: Request,
   res: Response
 ) {
+    const req = _req as AuthenticatedRequest;
   const toolCallId =
-    typeof req.params.toolCallId === "string" ? req.params.toolCallId : undefined;
+    typeof _req.params.toolCallId === "string" ? _req.params.toolCallId : undefined;
 
   if (!toolCallId) {
     return res.status(400).json({
@@ -60,10 +63,10 @@ export async function rejectAgentToolCallController(
     });
   }
 
-  const input = rejectToolCallSchema.parse(req.body);
+  const input = rejectToolCallSchema.parse(_req.body);
 
   const result = await rejectAgentToolCall({
-    userId: req.user.id,
+    userId: _req.user.id,
     toolCallRecordId: toolCallId,
     reason: input.reason
   });

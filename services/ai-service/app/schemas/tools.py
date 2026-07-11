@@ -2,6 +2,17 @@ from typing import Any, Dict, Optional
 from pydantic import BaseModel, Field
 
 
+class AgentToolCall(BaseModel):
+    tool_call_id: Optional[str] = Field(default=None, alias="toolCallId")
+    tool_name: str = Field(..., alias="toolName")
+    arguments: Dict[str, Any] = Field(default_factory=dict)
+    result: Optional[Any] = None
+
+    model_config = {
+        "populate_by_name": True
+    }
+
+
 class ExecuteApprovedToolRequest(BaseModel):
     tool_call_id: Optional[str] = Field(default=None, alias="toolCallId")
     tool_name: str = Field(..., alias="toolName")

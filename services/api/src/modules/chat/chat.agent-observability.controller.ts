@@ -1,4 +1,4 @@
-import type { Response } from "express";
+import type { Response, Request } from "express";
 import type { AuthenticatedRequest } from "../../types/express.js";
 import {
   agentRunParamsSchema,
@@ -13,13 +13,14 @@ import {
 } from "./chat.agent-observability.service.js";
 
 export async function listAgentRunsController(
-  req: AuthenticatedRequest,
+  _req: Request,
   res: Response
 ) {
-  const query = listAgentRunsQuerySchema.parse(req.query);
+    const req = _req as AuthenticatedRequest;
+  const query = listAgentRunsQuerySchema.parse(_req.query);
 
   const result = await listAgentRuns({
-    userId: req.user.id,
+    userId: _req.user.id,
     query
   });
 
@@ -31,10 +32,11 @@ export async function listAgentRunsController(
 }
 
 export async function getAgentRunsSummaryController(
-  req: AuthenticatedRequest,
+  _req: Request,
   res: Response
 ) {
-  const result = await getAgentRunsSummary(req.user.id);
+    const req = _req as AuthenticatedRequest;
+  const result = await getAgentRunsSummary(_req.user.id);
 
   return res.json({
     success: true,
@@ -44,13 +46,14 @@ export async function getAgentRunsSummaryController(
 }
 
 export async function getAgentRunDetailController(
-  req: AuthenticatedRequest,
+  _req: Request,
   res: Response
 ) {
-  const params = agentRunParamsSchema.parse(req.params);
+    const req = _req as AuthenticatedRequest;
+  const params = agentRunParamsSchema.parse(_req.params);
 
   const result = await getAgentRunDetail({
-    userId: req.user.id,
+    userId: _req.user.id,
     agentRunId: params.agentRunId
   });
 
@@ -62,13 +65,14 @@ export async function getAgentRunDetailController(
 }
 
 export async function getAgentRunTimelineController(
-  req: AuthenticatedRequest,
+  _req: Request,
   res: Response
 ) {
-  const params = agentRunParamsSchema.parse(req.params);
+    const req = _req as AuthenticatedRequest;
+  const params = agentRunParamsSchema.parse(_req.params);
 
   const result = await getAgentRunTimeline({
-    userId: req.user.id,
+    userId: _req.user.id,
     agentRunId: params.agentRunId
   });
 
@@ -80,13 +84,14 @@ export async function getAgentRunTimelineController(
 }
 
 export async function getAgentRunDebugController(
-  req: AuthenticatedRequest,
+  _req: Request,
   res: Response
 ) {
-  const params = agentRunParamsSchema.parse(req.params);
+    const req = _req as AuthenticatedRequest;
+  const params = agentRunParamsSchema.parse(_req.params);
 
   const result = await getAgentRunDebug({
-    userId: req.user.id,
+    userId: _req.user.id,
     agentRunId: params.agentRunId
   });
 

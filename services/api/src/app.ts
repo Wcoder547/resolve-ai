@@ -103,13 +103,13 @@ export function createApp() {
 
   app.use("/api", apiRateLimiter);
 
-  app.use("/api/auth", authRateLimiter, authRoutes);
-  app.use("/api/organizations", organizationRoutes);
-  app.use("/api/knowledge", knowledgeRoutes);
-  app.use("/api/chat", aiChatRateLimiter, chatRoutes);
-  app.use("/api/usage", usageRoutes);
-  app.use("/api/rbac", rbacRoutes);
-  app.use("/api/integrations", integrationRoutes);
+  app.use("/api/v1/auth", authRateLimiter, authRoutes); // ok 
+  app.use("/api/v1/organizations", organizationRoutes); // ok 
+  app.use("/api/v1/knowledge", knowledgeRoutes); //ok
+  app.use("/api/v1/chat", aiChatRateLimiter, chatRoutes);
+  app.use("/api/v1/usage", usageRoutes); //ok 
+  app.use("/api/v1/rbac", rbacRoutes); // ok
+  app.use("/api/v1/integrations", integrationRoutes); //ok
 
   app.use(notFoundMiddleware);
   app.use(errorMiddleware);

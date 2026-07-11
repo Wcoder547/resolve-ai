@@ -1,4 +1,4 @@
-import { Response } from "express";
+import type { Request, Response } from "express";
 import type { AuthenticatedRequest } from "../../middleware/auth.middleware.js";
 import {
   getCurrentOrganization,
@@ -24,54 +24,40 @@ function handleOrganizationError(error: unknown, res: Response) {
 }
 
 export async function getCurrentOrganizationController(
-  req: AuthenticatedRequest,
+  req: Request,
   res: Response
 ) {
+  const authReq = req as AuthenticatedRequest;
   try {
-    const userId = req.user?.userId;
+    const userId = authReq.user?.userId;
 
     if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized."
-      });
+      return res.status(401).json({ success: false, message: "Unauthorized." });
     }
 
     const organization = await getCurrentOrganization(userId);
 
-    return res.json({
-      success: true,
-      data: {
-        organization
-      }
-    });
+    return res.json({ success: true, data: { organization } });
   } catch (error) {
     return handleOrganizationError(error, res);
   }
 }
 
 export async function getOrganizationMembersController(
-  req: AuthenticatedRequest,
+  req: Request,
   res: Response
 ) {
+  const authReq = req as AuthenticatedRequest;
   try {
-    const userId = req.user?.userId;
+    const userId = authReq.user?.userId;
 
     if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized."
-      });
+      return res.status(401).json({ success: false, message: "Unauthorized." });
     }
 
     const members = await getOrganizationMembers(userId);
 
-    return res.json({
-      success: true,
-      data: {
-        members
-      }
-    });
+    return res.json({ success: true, data: { members } });
   } catch (error) {
     return handleOrganizationError(error, res);
   }
