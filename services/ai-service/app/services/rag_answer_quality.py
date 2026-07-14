@@ -231,7 +231,11 @@ def validate_and_format_rag_answer(
     if invalid_labels:
         raise ValueError(f"Model used invalid citations: {', '.join(invalid_labels)}")
 
-    if settings.rag_require_citations and not used_labels:
+    # --- FIX: Determine if the model safely backed out due to missing context ---
+    is_fallback_response = needs_escalation or confidence == "low"
+
+    # Enforce citation presence only if it is NOT an expected fallback/out-of-context response
+    if settings.rag_require_citations and not used_labels and not is_fallback_response:
         raise ValueError("Model response did not include required citations.")
 
     reason_map = map_citation_reasons(structured)
@@ -243,7 +247,14 @@ def validate_and_format_rag_answer(
     )
 
     has_citations = len(citations) > 0
-    approved = has_citations if settings.rag_require_citations else True
+    
+    # --- FIX: Route guardrail metrics accurately for out-of-context scenarios ---
+    if is_fallback_response:
+        approved = True
+        grounded = False  # It accurately reported that it lacked source ground truth
+    else:
+        approved = has_citations if settings.rag_require_citations else True
+        grounded = approved
 
     risk_level = "low" if approved else "medium"
     unsupported_reason = None if approved else "Answer did not pass citation guardrails."
@@ -267,7 +278,7 @@ def validate_and_format_rag_answer(
         "escalationReason": escalation_reason,
         "guardrails": {
             "approved": approved,
-            "grounded": approved,
+            "grounded": grounded,
             "hasCitations": has_citations,
             "citationCount": len(citations),
             "riskLevel": risk_level,

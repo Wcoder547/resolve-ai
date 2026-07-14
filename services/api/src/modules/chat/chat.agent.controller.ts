@@ -8,9 +8,9 @@ export async function askAgenticQuestionController(
   res: Response
 ) {
     const req = _req as AuthenticatedRequest;
-  const input = askQuestionSchema.parse(_req.body);
+  const input = askQuestionSchema.parse(req.body);
 
-  const result = await askAgenticQuestion(_req.user.id, input);
+  const result = await askAgenticQuestion(req.user.id, input);
 
   return res.json({
     success: true,

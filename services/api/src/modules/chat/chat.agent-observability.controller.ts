@@ -17,10 +17,10 @@ export async function listAgentRunsController(
   res: Response
 ) {
     const req = _req as AuthenticatedRequest;
-  const query = listAgentRunsQuerySchema.parse(_req.query);
+  const query = listAgentRunsQuerySchema.parse(req.query);
 
   const result = await listAgentRuns({
-    userId: _req.user.id,
+    userId: req.user.id,
     query
   });
 
@@ -36,7 +36,7 @@ export async function getAgentRunsSummaryController(
   res: Response
 ) {
     const req = _req as AuthenticatedRequest;
-  const result = await getAgentRunsSummary(_req.user.id);
+  const result = await getAgentRunsSummary(req.user.id);
 
   return res.json({
     success: true,
@@ -53,7 +53,7 @@ export async function getAgentRunDetailController(
   const params = agentRunParamsSchema.parse(_req.params);
 
   const result = await getAgentRunDetail({
-    userId: _req.user.id,
+    userId: req.user.id,
     agentRunId: params.agentRunId
   });
 
@@ -72,7 +72,7 @@ export async function getAgentRunTimelineController(
   const params = agentRunParamsSchema.parse(_req.params);
 
   const result = await getAgentRunTimeline({
-    userId: _req.user.id,
+    userId: req.user.id,
     agentRunId: params.agentRunId
   });
 
@@ -88,10 +88,10 @@ export async function getAgentRunDebugController(
   res: Response
 ) {
     const req = _req as AuthenticatedRequest;
-  const params = agentRunParamsSchema.parse(_req.params);
+  const params = agentRunParamsSchema.parse(req.params);
 
   const result = await getAgentRunDebug({
-    userId: _req.user.id,
+    userId: req.user.id,
     agentRunId: params.agentRunId
   });
 

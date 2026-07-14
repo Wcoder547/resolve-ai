@@ -12,7 +12,7 @@ export async function listPendingAgentToolCallsController(
   res: Response
 ) {
     const req = _req as AuthenticatedRequest;
-  const result = await listPendingAgentToolCalls(_req.user.id);
+  const result = await listPendingAgentToolCalls(req.user.id);
 
   return res.json({
     success: true,
@@ -37,7 +37,7 @@ export async function approveAgentToolCallController(
   }
 
   const result = await approveAgentToolCall({
-    userId: _req.user.id,
+    userId: req.user.id,
     toolCallRecordId: toolCallId
   });
 
@@ -66,7 +66,7 @@ export async function rejectAgentToolCallController(
   const input = rejectToolCallSchema.parse(_req.body);
 
   const result = await rejectAgentToolCall({
-    userId: _req.user.id,
+    userId: req.user.id,
     toolCallRecordId: toolCallId,
     reason: input.reason
   });

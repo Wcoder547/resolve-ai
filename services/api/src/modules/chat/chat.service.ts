@@ -302,71 +302,6 @@ async function contextualizeQuestion(input: {
 
 export async function askRagQuestion(userId: string, input: AskQuestionInput) {
   const membership = await getPrimaryMembership(userId);
-  if (questionContext.provider !== "none" && questionContext.usage) {
-    await recordAiUsage({
-      organizationId: membership.organizationId,
-      userId,
-      conversationId: conversation.id,
-      messageId: assistantMessage.id,
-      operation: "question_rewrite",
-      provider: questionContext.provider,
-      model: questionContext.model,
-      promptTokens: questionContext.usage.promptTokens,
-      completionTokens: questionContext.usage.completionTokens,
-      totalTokens: questionContext.usage.totalTokens,
-      isEstimated: questionContext.usage.isEstimated,
-      metadata: {
-        originalQuestion: input.question,
-        standaloneQuestion: questionContext.standaloneQuestion,
-        wasFollowUp: questionContext.wasFollowUp,
-      },
-    });
-  }
-
-  if (searchResult.embedding?.usage) {
-    await recordAiUsage({
-      organizationId: membership.organizationId,
-      userId,
-      conversationId: conversation.id,
-      messageId: assistantMessage.id,
-      operation: "embedding_query",
-      provider: searchResult.embedding.provider,
-      model: searchResult.embedding.model,
-      promptTokens: searchResult.embedding.usage.promptTokens,
-      completionTokens: searchResult.embedding.usage.completionTokens,
-      totalTokens: searchResult.embedding.usage.totalTokens,
-      isEstimated: searchResult.embedding.usage.isEstimated,
-      metadata: {
-        originalQuestion: input.question,
-        standaloneQuestion: questionContext.standaloneQuestion,
-        retrievalQuery,
-        retrievalMode: searchResult.retrievalMode,
-      },
-    });
-  }
-
-  await recordAiUsage({
-    organizationId: membership.organizationId,
-    userId,
-    conversationId: conversation.id,
-    messageId: assistantMessage.id,
-    operation: "rag_chat_answer",
-    provider: aiResponse.data.provider,
-    model: aiResponse.data.model,
-    promptTokens: aiResponse.data.usage.promptTokens,
-    completionTokens: aiResponse.data.usage.completionTokens,
-    totalTokens: aiResponse.data.usage.totalTokens,
-    isEstimated: aiResponse.data.usage.isEstimated,
-    metadata: {
-      grounded: aiResponse.data.grounded,
-      confidence: aiResponse.data.confidence,
-      citationCount: aiResponse.data.citations.length,
-      promptVersion: aiResponse.data.promptVersion,
-      retrievalMode: searchResult.retrievalMode,
-      topScore,
-    },
-  });
-
   let conversation = input.conversationId
     ? await prisma.conversation.findFirst({
         where: {
@@ -457,6 +392,70 @@ export async function askRagQuestion(userId: string, input: AskQuestionInput) {
           embedding: searchResult.embedding,
           topScore,
         } as Prisma.InputJsonValue,
+      },
+    });
+    if (questionContext.provider !== "none" && questionContext.usage) {
+      await recordAiUsage({
+        organizationId: membership.organizationId,
+        userId,
+        conversationId: conversation.id,
+        messageId: assistantMessage.id,
+        operation: "question_rewrite",
+        provider: questionContext.provider,
+        model: questionContext.model,
+        promptTokens: questionContext.usage.promptTokens,
+        completionTokens: questionContext.usage.completionTokens,
+        totalTokens: questionContext.usage.totalTokens,
+        isEstimated: questionContext.usage.isEstimated,
+        metadata: {
+          originalQuestion: input.question,
+          standaloneQuestion: questionContext.standaloneQuestion,
+          wasFollowUp: questionContext.wasFollowUp,
+        },
+      });
+    }
+
+    if (searchResult.embedding?.usage) {
+      await recordAiUsage({
+        organizationId: membership.organizationId,
+        userId,
+        conversationId: conversation.id,
+        messageId: assistantMessage.id,
+        operation: "embedding_query",
+        provider: searchResult.embedding.provider,
+        model: searchResult.embedding.model,
+        promptTokens: searchResult.embedding.usage.promptTokens,
+        completionTokens: searchResult.embedding.usage.completionTokens,
+        totalTokens: searchResult.embedding.usage.totalTokens,
+        isEstimated: searchResult.embedding.usage.isEstimated,
+        metadata: {
+          originalQuestion: input.question,
+          standaloneQuestion: questionContext.standaloneQuestion,
+          retrievalQuery,
+          retrievalMode: searchResult.retrievalMode,
+        },
+      });
+    }
+
+    await recordAiUsage({
+      organizationId: membership.organizationId,
+      userId,
+      conversationId: conversation.id,
+      messageId: assistantMessage.id,
+      operation: "rag_chat_answer",
+      provider: aiResponse.data.provider,
+      model: aiResponse.data.model,
+      promptTokens: aiResponse.data.usage.promptTokens,
+      completionTokens: aiResponse.data.usage.completionTokens,
+      totalTokens: aiResponse.data.usage.totalTokens,
+      isEstimated: aiResponse.data.usage.isEstimated,
+      metadata: {
+        grounded: aiResponse.data.grounded,
+        confidence: aiResponse.data.confidence,
+        citationCount: aiResponse.data.citations.length,
+        promptVersion: aiResponse.data.promptVersion,
+        retrievalMode: searchResult.retrievalMode,
+        topScore,
       },
     });
 

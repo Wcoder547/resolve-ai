@@ -14,7 +14,7 @@ export type RefreshTokenPayload = {
 
 export function signAccessToken(payload: AccessTokenPayload): string {
   return jwt.sign(payload, getEnv("JWT_ACCESS_SECRET"), {
-    expiresIn: "15m"
+    expiresIn: "45m"
   });
 }
 

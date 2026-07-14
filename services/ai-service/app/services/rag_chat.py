@@ -1,3 +1,4 @@
+import ast
 from app.config.settings import get_settings
 from app.providers.llm_factory import get_llm_provider_chain
 from app.schemas.chat import ChatHistoryMessage, RagChatRequest
@@ -121,20 +122,34 @@ def generate_rag_answer(payload: RagChatRequest):
                 max_tokens=1400,
             )
 
+            # --- FIX 1: Standardize LLM extraction to handle Gemini stringified dicts ---
+            raw_answer_str = str(raw_answer)
+            
+            if raw_answer_str.strip().startswith("{'type':") and "'text':" in raw_answer_str:
+                try:
+                    parsed_dict = ast.literal_eval(raw_answer_str)
+                    raw_answer_str = parsed_dict.get("text", raw_answer_str)
+                except Exception:
+                    pass
+
+            print(f"--- RAW OUTPUT FROM {provider_name} ---")
+            print(raw_answer_str)
+
+            # --- FIX 2: Call validation only once and pass the cleaned string ---
             validated_answer = validate_and_format_rag_answer(
-                raw_model_response=raw_answer,
+                raw_model_response=raw_answer_str,
                 citation_catalog=citation_catalog,
             )
 
             return {
                 "answer": validated_answer["answer"],
                 "sources": payload.sources,
-                "citations": validated_answer["citations"],
+                "citations": validated_answer.get("citations", []),
                 "model": model_name,
                 "provider": provider_name,
                 "usage": build_usage(
-                prompt_text=SYSTEM_PROMPT + "\n\n" + user_prompt,
-                completion_text=raw_answer,
+                    prompt_text=SYSTEM_PROMPT + "\n\n" + user_prompt,
+                    completion_text=raw_answer_str,
                 ),
                 "grounded": validated_answer["guardrails"]["grounded"],
                 "confidence": validated_answer["confidence"],
@@ -147,7 +162,9 @@ def generate_rag_answer(payload: RagChatRequest):
             }
 
         except Exception as error:
-            provider_errors.append(f"{provider_name}: {str(error)}")
+            error_message = str(error)
+            provider_errors.append(f"{provider_name}: {error_message}")
+            print(f"--- VALIDATION FAILED FOR {provider_name} ---", error_message)
 
     raise RuntimeError(
         "All configured LLM providers failed or returned ungrounded answers. "
