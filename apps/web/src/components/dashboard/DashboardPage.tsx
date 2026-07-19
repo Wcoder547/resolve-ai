@@ -63,14 +63,14 @@ export function DashboardPage() {
             variant="outline"
             size="sm"
             className="border-[#334155] text-slate-400 hover:text-slate-200 hover:bg-[#1E293B] bg-transparent text-xs"
-            onClick={() => router.push("/app/knowledge")}
+            onClick={() => router.push("/knowledge")}
           >
             <Upload className="w-3.5 h-3.5 mr-1.5" /> Upload source
           </Button>
           <Button
             size="sm"
             className="bg-cyan-400 text-slate-950 hover:bg-cyan-300 font-semibold text-xs"
-            onClick={() => router.push("/app/chat")}
+            onClick={() => router.push("/chat")}
           >
             <MessageSquare className="w-3.5 h-3.5 mr-1.5" /> Ask AI
           </Button>
@@ -106,7 +106,7 @@ export function DashboardPage() {
           size="sm"
           variant="outline"
           className="border-red-400/30 text-red-400 hover:bg-red-400/10 bg-transparent text-xs sm:ml-auto"
-          onClick={() => router.push("/app/incidents")}
+          onClick={() => router.push("/incidents")}
         >
           View incident <ChevronRight className="w-3.5 h-3.5 ml-1" />
         </Button>
@@ -119,7 +119,7 @@ export function DashboardPage() {
             <div className="text-sm font-semibold text-slate-200">Knowledge health</div>
             <button
               className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
-              onClick={() => router.push("/app/knowledge")}
+              onClick={() => router.push("/knowledge")}
             >
               View all
             </button>
@@ -150,11 +150,11 @@ export function DashboardPage() {
           <div className="text-sm font-semibold text-slate-200 mb-4">Quick actions</div>
           <div className="space-y-2">
             {[
-              { label: "Upload knowledge source", icon: Upload, action: "/app/knowledge" },
-              { label: "Start AI conversation", icon: MessageSquare, action: "/app/chat" },
-              { label: "Review approvals", icon: CheckSquare, action: "/app/approvals", badge: "3" },
-              { label: "View active incident", icon: AlertTriangle, action: "/app/incidents", badge: "SEV2", badgeColor: "text-red-400 bg-red-400/10" },
-              { label: "Check agent runs", icon: Activity, action: "/app/agent-runs" },
+              { label: "Upload knowledge source", icon: Upload, action: "/knowledge" },
+              { label: "Start AI conversation", icon: MessageSquare, action: "/chat" },
+              { label: "Review approvals", icon: CheckSquare, action: "/approvals", badge: "3" },
+              { label: "View active incident", icon: AlertTriangle, action: "/incidents", badge: "SEV2", badgeColor: "text-red-400 bg-red-400/10" },
+              { label: "Check agent runs", icon: Activity, action: "/agent-runs" },
             ].map(({ label, icon: Icon, action, badge, badgeColor }) => (
               <button
                 key={label}
@@ -180,7 +180,7 @@ export function DashboardPage() {
             <div className="text-sm font-semibold text-slate-200">Pending approvals</div>
             <button
               className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
-              onClick={() => router.push("/app/approvals")}
+              onClick={() => router.push("/approvals")}
             >
               View all (3)
             </button>
@@ -192,7 +192,7 @@ export function DashboardPage() {
               { action: "Tag incident as SEV1 in PagerDuty", risk: "Medium", ticket: "INC-45" },
             ].map(({ action, risk, ticket }) => (
               <div key={ticket} className="p-3 bg-[#0B1220] border border-[#1E293B] rounded-lg hover:border-[#334155] transition-colors cursor-pointer"
-                onClick={() => router.push("/app/approvals")}>
+                onClick={() => router.push("/approvals")}>
                 <div className="flex items-start justify-between gap-2 mb-1">
                   <span className="text-xs text-slate-300 leading-relaxed">{action}</span>
                   <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 ${risk === "High" ? "bg-red-400/10 text-red-400" : "bg-yellow-400/10 text-yellow-400"}`}>
@@ -212,7 +212,7 @@ export function DashboardPage() {
           <div className="text-sm font-semibold text-slate-200">Recent AI activity</div>
           <button
             className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
-            onClick={() => router.push("/app/chat")}
+            onClick={() => router.push("/chat")}
           >
             View all
           </button>
@@ -243,7 +243,7 @@ export function DashboardPage() {
           <div className="text-sm font-semibold text-slate-200">Recent knowledge sources</div>
           <button
             className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
-            onClick={() => router.push("/app/knowledge")}
+            onClick={() => router.push("/knowledge")}
           >
             View all
           </button>

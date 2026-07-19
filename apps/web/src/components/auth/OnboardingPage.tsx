@@ -213,7 +213,7 @@ export function OnboardingPage() {
 
               <div className="flex items-center gap-3 mt-6">
                 <button
-                  onClick={() => router.push("/app")}
+                  onClick={() => router.push("/dashboard")}
                   className="text-sm text-slate-500 hover:text-slate-300 transition-colors"
                 >
                   Skip for now
@@ -251,12 +251,12 @@ export function OnboardingPage() {
               <div className="space-y-3">
                 <Button
                   className="w-full bg-cyan-400 text-slate-950 hover:bg-cyan-300 font-semibold h-10"
-                  onClick={() => router.push("/app/chat")}
+                  onClick={() => router.push("/chat")}
                 >
                   Ask AI from this source <ChevronRight className="w-4 h-4 ml-1" />
                 </Button>
                 <button
-                  onClick={() => router.push("/app")}
+                  onClick={() => router.push("/dashboard")}
                   className="w-full text-sm text-slate-500 hover:text-slate-300 transition-colors py-2"
                 >
                   Go to dashboard

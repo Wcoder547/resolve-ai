@@ -24,7 +24,7 @@ export function LoginPage() {
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
-      router.push("/app");
+      router.push("/dashboard");
     }, 1200);
   };
 

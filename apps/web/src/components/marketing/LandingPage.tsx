@@ -405,7 +405,7 @@ export function LandingPage() {
             <Button
               variant="outline"
               className="border-[#334155] text-slate-300 hover:text-slate-50 hover:bg-[#1E293B] h-11 px-6 text-sm bg-transparent"
-              onClick={() => router.push("/app")}
+              onClick={() => router.push("/dashboard")}
             >
               View product demo
             </Button>

@@ -18,18 +18,18 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 
 const navItems = [
-  { label: "Overview", icon: LayoutDashboard, path: "/app" },
-  { label: "Knowledge Base", icon: Database, path: "/app/knowledge" },
-  { label: "AI Chat", icon: MessageSquare, path: "/app/chat" },
-  { label: "Tickets", icon: Ticket, path: "/app/tickets" },
-  { label: "Incidents", icon: AlertTriangle, path: "/app/incidents", badge: "1", badgeVariant: "danger" },
-  { label: "Approvals", icon: CheckSquare, path: "/app/approvals", badge: "3", badgeVariant: "warning" },
-  { label: "Agent Runs", icon: Activity, path: "/app/agent-runs" },
-  { label: "Analytics", icon: BarChart3, path: "/app/analytics" },
+  { label: "Overview", icon: LayoutDashboard, path: "/dashboard" },
+  { label: "Knowledge Base", icon: Database, path: "/knowledge" },
+  { label: "AI Chat", icon: MessageSquare, path: "/chat" },
+  { label: "Tickets", icon: Ticket, path: "/tickets" },
+  { label: "Incidents", icon: AlertTriangle, path: "/incidents", badge: "1", badgeVariant: "danger" },
+  { label: "Approvals", icon: CheckSquare, path: "/approvals", badge: "3", badgeVariant: "warning" },
+  { label: "Agent Runs", icon: Activity, path: "/agent-runs" },
+  { label: "Analytics", icon: BarChart3, path: "/analytics" },
 ];
 
 const bottomItems = [
-  { label: "Settings", icon: Settings, path: "/app/settings" },
+  { label: "Settings", icon: Settings, path: "/settings" },
   { label: "Documentation", icon: BookOpen, path: "#" },
 ];
 
@@ -40,7 +40,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   const isActive = (path: string) => {
-    if (path === "/app") return pathname === "/app";
+    if (path === "/dashboard") return pathname === "/dashboard";
     return pathname.startsWith(path);
   };
 
@@ -202,7 +202,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <User className="w-4 h-4 mr-2" /> Profile
                 </DropdownMenuItem>
                 <DropdownMenuItem className="text-slate-300 hover:text-white hover:bg-slate-700 cursor-pointer"
-                  onClick={() => router.push("/app/settings")}>
+                  onClick={() => router.push("/settings")}>
                   <Settings className="w-4 h-4 mr-2" /> Settings
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className="bg-slate-700" />
@@ -259,7 +259,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     size="sm"
                     variant="ghost"
                     className="text-slate-400 hover:text-slate-200 hover:bg-[#1E293B]"
-                    onClick={() => router.push("/app/knowledge")}
+                    onClick={() => router.push("/knowledge")}
                   >
                     <Upload className="w-4 h-4" />
                   </Button>
@@ -270,7 +270,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Button
                 size="sm"
                 className="bg-cyan-400 text-slate-950 hover:bg-cyan-300 font-medium text-xs px-3"
-                onClick={() => router.push("/app/chat")}
+                onClick={() => router.push("/chat")}
               >
                 <MessageSquare className="w-3.5 h-3.5 mr-1" />
                 Ask AI
