@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Zap, Eye, EyeOff, CheckCircle, FileText, ArrowRight } from "lucide-react";
 import { Button } from "../ui/button";
+import { loginUser } from "@/lib/api";
+import { saveTokens, saveUser, saveOrganization } from "@/lib/auth";
 
 export function LoginPage() {
   const router = useRouter();
@@ -14,7 +16,7 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
       setError("Please fill in all fields.");
@@ -22,10 +24,16 @@ export function LoginPage() {
     }
     setError("");
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const res = await loginUser({ email, password });
+      saveTokens(res.data.tokens);
+      saveUser(res.data.user);
+      saveOrganization(res.data.organization);
       router.push("/dashboard");
-    }, 1200);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sign in failed. Please try again.");
+      setLoading(false);
+    }
   };
 
   return (
@@ -183,7 +191,7 @@ export function LoginPage() {
           </form>
 
           <p className="text-sm text-slate-500 text-center mt-6">
-            Don't have an account?{" "}
+            Don&apos;t have an account?{" "}
             <button
               onClick={() => router.push("/register")}
               className="text-cyan-400 hover:text-cyan-300 font-medium transition-colors"

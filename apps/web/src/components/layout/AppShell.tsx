@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
   LayoutDashboard, Database, MessageSquare, Ticket, AlertTriangle,
   CheckSquare, Activity, BarChart3, Settings, BookOpen, User,
   Bell, Upload, Search, ChevronDown, Menu, X, Zap, LogOut,
-  ChevronRight
+  ChevronRight, Loader2
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -16,6 +16,9 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger
 } from "../ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
+import { getAccessToken, getUser, clearSession } from "@/lib/auth";
+import { getCurrentUser, logoutUser } from "@/lib/api";
+import type { AuthUser } from "@/types/auth";
 
 const navItems = [
   { label: "Overview", icon: LayoutDashboard, path: "/dashboard" },
@@ -36,13 +39,69 @@ const bottomItems = [
 export function AppShell({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
+
+  useEffect(() => {
+    const token = getAccessToken();
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+
+    const cached = getUser();
+    if (cached) {
+      setUser(cached);
+      setCheckingAuth(false);
+    }
+
+    // Validate the token against the backend and refresh user info in the
+    // background; if it's expired or invalid, boot back to login.
+    getCurrentUser()
+      .then((res) => {
+        setUser(res.data.user);
+        setCheckingAuth(false);
+      })
+      .catch(() => {
+        clearSession();
+        router.replace("/login");
+      });
+  }, [router]);
+
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+    } catch {
+      // Non-fatal — clear the local session regardless.
+    } finally {
+      clearSession();
+      router.push("/login");
+    }
+  };
+
+  const initials = user?.name
+    ? user.name
+        .split(" ")
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((n) => n[0]!.toUpperCase())
+        .join("")
+    : "";
 
   const isActive = (path: string) => {
     if (path === "/dashboard") return pathname === "/dashboard";
     return pathname.startsWith(path);
   };
+
+  if (checkingAuth) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#020617]">
+        <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
+      </div>
+    );
+  }
 
   const currentPage = navItems.find(i => isActive(i.path))?.label ||
     bottomItems.find(i => isActive(i.path))?.label || "Overview";
@@ -67,9 +126,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           ${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
         `}>
           {/* Logo */}
-          <div className="flex items-center gap-3 px-4 h-14 border-b border-[#1E293B] flex-shrink-0">
+          <div className="flex items-center gap-3 px-4 h-14 border-b border-[#1E293B] shrink-0">
             <div className="flex items-center gap-2 min-w-0">
-              <div className="w-7 h-7 rounded-lg bg-cyan-400/10 border border-cyan-400/30 flex items-center justify-center flex-shrink-0">
+              <div className="w-7 h-7 rounded-lg bg-cyan-400/10 border border-cyan-400/30 flex items-center justify-center shrink-0">
                 <Zap className="w-4 h-4 text-cyan-400" />
               </div>
               {sidebarOpen && (
@@ -92,14 +151,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           {sidebarOpen && (
             <div className="px-3 py-2 border-b border-[#1E293B]">
               <button className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[#1E293B] transition-colors text-left">
-                <div className="w-5 h-5 rounded bg-violet-500/20 border border-violet-500/30 flex items-center justify-center flex-shrink-0">
+                <div className="w-5 h-5 rounded bg-violet-500/20 border border-violet-500/30 flex items-center justify-center shrink-0">
                   <span className="text-[9px] font-bold text-violet-400">AC</span>
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-medium text-slate-200 truncate">Acme Corp</div>
                   <div className="text-[10px] text-slate-500">Pro plan</div>
                 </div>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+                <ChevronDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
               </button>
             </div>
           )}
@@ -122,7 +181,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                         }
                       `}
                     >
-                      <Icon className={`w-4 h-4 flex-shrink-0 ${active ? "text-cyan-400" : ""}`} />
+                      <Icon className={`w-4 h-4 shrink-0 ${active ? "text-cyan-400" : ""}`} />
                       {sidebarOpen && (
                         <>
                           <span className="flex-1 text-left">{item.label}</span>
@@ -166,7 +225,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                         }
                       `}
                     >
-                      <Icon className="w-4 h-4 flex-shrink-0" />
+                      <Icon className="w-4 h-4  shrink-0" />
                       {sidebarOpen && <span>{item.label}</span>}
                     </button>
                   </TooltipTrigger>
@@ -183,22 +242,23 @@ export function AppShell({ children }: { children: ReactNode }) {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="w-full flex items-center gap-3 px-2.5 py-2 rounded-lg text-sm text-slate-400 hover:text-slate-200 hover:bg-[#1E293B] transition-all duration-150">
-                  <Avatar className="w-6 h-6 flex-shrink-0">
-                    <AvatarFallback className="bg-cyan-400/20 text-cyan-400 text-[10px] font-semibold">JD</AvatarFallback>
+                  <Avatar className="w-6 h-6 shrink-0">
+                    <AvatarFallback className="bg-cyan-400/20 text-cyan-400 text-[10px] font-semibold">{initials || "?"}</AvatarFallback>
                   </Avatar>
                   {sidebarOpen && (
                     <>
                       <div className="flex-1 text-left min-w-0">
-                        <div className="text-xs font-medium text-slate-300 truncate">Jane Doe</div>
-                        <div className="text-[10px] text-slate-500 truncate">jane@acme.com</div>
+                        <div className="text-xs font-medium text-slate-300 truncate">{user?.name ?? "—"}</div>
+                        <div className="text-[10px] text-slate-500 truncate">{user?.email ?? ""}</div>
                       </div>
-                      <ChevronDown className="w-3 h-3 flex-shrink-0" />
+                      <ChevronDown className="w-3 h-3 shrink-0" />
                     </>
                   )}
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-52 bg-slate-800 border-slate-700 text-slate-200" side="top" align="start">
-                <DropdownMenuItem className="text-slate-300 hover:text-white hover:bg-slate-700 cursor-pointer">
+                <DropdownMenuItem className="text-slate-300 hover:text-white hover:bg-slate-700 cursor-pointer"
+                  onClick={() => router.push("/settings")}>
                   <User className="w-4 h-4 mr-2" /> Profile
                 </DropdownMenuItem>
                 <DropdownMenuItem className="text-slate-300 hover:text-white hover:bg-slate-700 cursor-pointer"
@@ -207,7 +267,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className="bg-slate-700" />
                 <DropdownMenuItem className="text-red-400 hover:text-red-300 hover:bg-slate-700 cursor-pointer"
-                  onClick={() => router.push("/login")}>
+                  onClick={handleLogout}>
                   <LogOut className="w-4 h-4 mr-2" /> Sign out
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -241,7 +301,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {/* Breadcrumb */}
             <div className="flex items-center gap-1.5 text-sm flex-1 min-w-0">
               <span className="text-slate-500">Acme Corp</span>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-600 flex-shrink-0" />
+              <ChevronRight className="w-3.5 h-3.5 text-slate-600 shrink-0" />
               <span className="text-slate-300 font-medium truncate">{currentPage}</span>
             </div>
 

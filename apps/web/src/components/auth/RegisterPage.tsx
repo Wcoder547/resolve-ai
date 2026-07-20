@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Zap, Eye, EyeOff, Check, X } from "lucide-react";
 import { Button } from "../ui/button";
+import { registerUser } from "@/lib/api";
+import { saveTokens, saveUser, saveOrganization } from "@/lib/auth";
 
 function PasswordStrength({ password }: { password: string }) {
   const checks = [
@@ -66,12 +68,28 @@ export function RegisterPage() {
     return e;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const errs = validate();
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     setLoading(true);
-    setTimeout(() => { setLoading(false); router.push("/onboarding"); }, 1200);
+    try {
+      const res = await registerUser({
+        name: form.name,
+        email: form.email,
+        password: form.password,
+        organizationName: form.org,
+      });
+      saveTokens(res.data.tokens);
+      saveUser(res.data.user);
+      saveOrganization(res.data.organization);
+      router.push("/onboarding");
+    } catch (err) {
+      setErrors({
+        form: err instanceof Error ? err.message : "Registration failed. Please try again.",
+      });
+      setLoading(false);
+    }
   };
 
   return (
@@ -88,6 +106,12 @@ export function RegisterPage() {
         <p className="text-sm text-slate-500 mb-8">Start resolving support issues with grounded AI.</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {errors.form && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-sm text-red-400">
+              {errors.form}
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-1.5">Full name</label>
             <input
