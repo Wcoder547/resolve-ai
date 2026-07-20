@@ -124,3 +124,5 @@ export type SearchKnowledgeResponse = {
     context: string;
   };
 };
+
+

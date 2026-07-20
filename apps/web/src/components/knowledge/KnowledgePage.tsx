@@ -1,46 +1,65 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Upload, FileText, Search, MoreHorizontal, RefreshCw,
-  Trash2, Eye, AlertCircle, Loader2, CheckCircle,
-  ChevronDown, Filter, Copy, ChevronRight, X, Database
+  Upload, FileText, Search, RefreshCw,
+  Trash2, AlertCircle, Loader2, CheckCircle,
+  ChevronDown, Filter, Copy, X, Database
 } from "lucide-react";
 import { Button } from "../ui/button";
+import {
+  listKnowledgeSources,
+  getKnowledgeSource,
+  uploadKnowledgeFile,
+  ingestKnowledgeSource,
+  deleteKnowledgeSource,
+  searchKnowledge,
+} from "@/lib/api";
+import type {
+  KnowledgeSource,
+  KnowledgeSourceDetail,
+  KnowledgeSourceStatus,
+  SearchKnowledgeResponse,
+} from "@/types/knowledge";
+import { formatRelativeTime } from "@/lib/format";
 
-type Status = "Ready for AI" | "Processing" | "Failed" | "Pending";
+type DisplayStatus = "Ready for AI" | "Processing" | "Failed" | "Pending";
 
-interface Source {
-  id: string;
-  name: string;
-  type: string;
-  status: Status;
-  docs: number;
-  chunks: number;
-  size: string;
-  created: string;
-  updated: string;
+const STATUS_MAP: Record<KnowledgeSourceStatus, DisplayStatus> = {
+  PENDING: "Pending",
+  PROCESSING: "Processing",
+  COMPLETED: "Ready for AI",
+  FAILED: "Failed",
+};
+
+function toDisplayStatus(status: KnowledgeSourceStatus): DisplayStatus {
+  return STATUS_MAP[status] ?? "Pending";
 }
 
-const sources: Source[] = [
-  { id: "src_1", name: "Billing Runbook", type: "PDF", status: "Ready for AI", docs: 1, chunks: 234, size: "1.2 MB", created: "Jul 1", updated: "2h ago" },
-  { id: "src_2", name: "Support FAQ v3", type: "DOCX", status: "Ready for AI", docs: 1, chunks: 892, size: "3.4 MB", created: "Jun 28", updated: "5h ago" },
-  { id: "src_3", name: "API Reference", type: "MD", status: "Processing", docs: 1, chunks: 0, size: "892 KB", created: "Jul 14", updated: "12m ago" },
-  { id: "src_4", name: "Incident Playbooks", type: "PDF", status: "Ready for AI", docs: 4, chunks: 156, size: "5.1 MB", created: "Jun 15", updated: "1d ago" },
-  { id: "src_5", name: "Onboarding Guide", type: "PDF", status: "Failed", docs: 1, chunks: 0, size: "2.3 MB", created: "Jun 10", updated: "3d ago" },
-  { id: "src_6", name: "Webhook Integration Docs", type: "MD", status: "Ready for AI", docs: 1, chunks: 67, size: "128 KB", created: "Jun 5", updated: "4d ago" },
-  { id: "src_7", name: "Security Policies", type: "PDF", status: "Pending", docs: 1, chunks: 0, size: "456 KB", created: "Jul 14", updated: "just now" },
-];
+function formatBytes(bytes?: number | null): string {
+  if (!bytes || bytes <= 0) return "—";
+  const units = ["B", "KB", "MB", "GB"];
+  let i = 0;
+  let val = bytes;
+  while (val >= 1024 && i < units.length - 1) {
+    val /= 1024;
+    i++;
+  }
+  return `${val.toFixed(val < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
+}
 
-const chunks = [
-  { idx: "001", tokens: 512, size: "1.8 KB", preview: "Subscription activation is triggered by the subscription.activated webhook event. If this event fails to deliver..." },
-  { idx: "002", tokens: 489, size: "1.7 KB", preview: "When a payment succeeds, Stripe sends a charge.succeeded event followed by a subscription.activated event within..." },
-  { idx: "003", tokens: 521, size: "1.9 KB", preview: "To manually activate a subscription, navigate to the admin panel at /admin/subscriptions and locate the affected..." },
-  { idx: "004", tokens: 445, size: "1.6 KB", preview: "Common causes of subscription activation failure: 1) Webhook endpoint returned non-2xx response 2) Network timeout..." },
-];
+function fileExtLabel(source: KnowledgeSource): string {
+  if (source.type === "URL") return "URL";
+  if (source.type === "GITHUB") return "GITHUB";
+  if (source.mimeType?.includes("pdf")) return "PDF";
+  if (source.mimeType?.includes("markdown")) return "MD";
+  if (source.mimeType?.includes("word") || source.mimeType?.includes("officedocument")) return "DOCX";
+  if (source.type === "TEXT") return "TXT";
+  return source.type;
+}
 
-const statusBadge = (status: Status) => {
-  const map: Record<Status, string> = {
+const statusBadge = (status: DisplayStatus) => {
+  const map: Record<DisplayStatus, string> = {
     "Ready for AI": "bg-emerald-400/10 text-emerald-400 border-emerald-400/20",
     "Processing": "bg-yellow-400/10 text-yellow-400 border-yellow-400/20",
     "Failed": "bg-red-400/10 text-red-400 border-red-400/20",
@@ -49,7 +68,7 @@ const statusBadge = (status: Status) => {
   return map[status];
 };
 
-const statusIcon = (status: Status) => {
+const statusIcon = (status: DisplayStatus) => {
   if (status === "Ready for AI") return <CheckCircle className="w-3 h-3" />;
   if (status === "Processing") return <Loader2 className="w-3 h-3 animate-spin" />;
   if (status === "Failed") return <AlertCircle className="w-3 h-3" />;
@@ -57,29 +76,172 @@ const statusIcon = (status: Status) => {
 };
 
 export function KnowledgePage() {
-  const [selectedSource, setSelectedSource] = useState<Source | null>(null);
+  const [sources, setSources] = useState<KnowledgeSource[]>([]);
+  const [sourcesLoading, setSourcesLoading] = useState(true);
+  const [sourcesError, setSourcesError] = useState("");
+
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedDetail, setSelectedDetail] = useState<KnowledgeSourceDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
   const [activeTab, setActiveTab] = useState("overview");
   const [showUpload, setShowUpload] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadName, setUploadName] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
   const [searchQuery, setSearchQuery] = useState("");
   const [ragQuery, setRagQuery] = useState("");
-  const [ragResults, setRagResults] = useState(false);
+  const [ragLoading, setRagLoading] = useState(false);
+  const [ragResults, setRagResults] = useState<SearchKnowledgeResponse["data"]["chunks"]>([]);
+
+  const [chunkFilter, setChunkFilter] = useState("");
+  const [chunkResults, setChunkResults] = useState<SearchKnowledgeResponse["data"]["chunks"]>([]);
+  const [chunkSearching, setChunkSearching] = useState(false);
+
   const [dragOver, setDragOver] = useState(false);
   const [copiedChunk, setCopiedChunk] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [reingesting, setReingesting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const loadSources = useCallback(async () => {
+    setSourcesLoading(true);
+    setSourcesError("");
+    try {
+      const res = await listKnowledgeSources();
+      setSources(res.data.sources);
+    } catch {
+      setSourcesError("Couldn't load knowledge sources. Try refreshing.");
+    } finally {
+      setSourcesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSources();
+  }, [loadSources]);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setSelectedDetail(null);
+      return;
+    }
+    setDetailLoading(true);
+    getKnowledgeSource(selectedId)
+      .then(res => setSelectedDetail(res.data.source))
+      .catch(() => setSelectedDetail(null))
+      .finally(() => setDetailLoading(false));
+  }, [selectedId]);
 
   const filtered = sources.filter(s =>
     s.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleCopyChunk = (idx: string) => {
-    setCopiedChunk(idx);
+  const handleCopyChunk = (id: string, text: string) => {
+    navigator.clipboard?.writeText(text).catch(() => {});
+    setCopiedChunk(id);
     setTimeout(() => setCopiedChunk(null), 1500);
   };
+
+  const handleFilePick = (file: File | null) => {
+    if (!file) return;
+    setUploadFile(file);
+    if (!uploadName) setUploadName(file.name.replace(/\.[^/.]+$/, ""));
+  };
+
+  const handleUpload = async () => {
+    if (!uploadFile) return;
+    setUploading(true);
+    setUploadError("");
+    try {
+      await uploadKnowledgeFile(uploadFile, uploadName || undefined);
+      setShowUpload(false);
+      setUploadFile(null);
+      setUploadName("");
+      loadSources();
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRagSearch = async () => {
+    const q = ragQuery.trim();
+    if (!q) return;
+    setRagLoading(true);
+    try {
+      const res = await searchKnowledge(q);
+      setRagResults(res.data.chunks.slice(0, 3));
+    } catch {
+      setRagResults([]);
+    } finally {
+      setRagLoading(false);
+    }
+  };
+
+  const handleChunkSearch = async () => {
+    if (!selectedId) return;
+    const q = chunkFilter.trim();
+    if (!q) {
+      setChunkResults([]);
+      return;
+    }
+    setChunkSearching(true);
+    try {
+      const res = await searchKnowledge(q);
+      setChunkResults(res.data.chunks.filter(c => c.source.id === selectedId));
+    } catch {
+      setChunkResults([]);
+    } finally {
+      setChunkSearching(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!selectedId) return;
+    if (!confirm("Delete this knowledge source? This cannot be undone.")) return;
+    setDeleting(true);
+    try {
+      await deleteKnowledgeSource(selectedId);
+      setSources(prev => prev.filter(s => s.id !== selectedId));
+      setSelectedId(null);
+      setSelectedDetail(null);
+    } catch {
+      // Non-fatal — leave the item in place if the delete failed.
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleReingest = async () => {
+    if (!selectedId) return;
+    setReingesting(true);
+    try {
+      await ingestKnowledgeSource(selectedId);
+      const [srcRes, listRes] = await Promise.all([
+        getKnowledgeSource(selectedId),
+        listKnowledgeSources(),
+      ]);
+      setSelectedDetail(srcRes.data.source);
+      setSources(listRes.data.sources);
+    } catch {
+      // Non-fatal — status will reflect whatever the backend left it at.
+    } finally {
+      setReingesting(false);
+    }
+  };
+
+  const selected = selectedDetail;
+  const selectedStatus = selected ? toDisplayStatus(selected.status) : null;
+  const selectedChunksTotal = selected?.documents.reduce((sum, d) => sum + d.chunksCount, 0) ?? 0;
 
   return (
     <div className="flex h-full bg-[#020617]">
       {/* Source list */}
-      <div className={`flex flex-col ${selectedSource ? "hidden lg:flex lg:w-[420px] xl:w-[480px]" : "flex-1"} border-r border-[#1E293B]`}>
+      <div className={`flex flex-col ${selectedId ? "hidden lg:flex lg:w-[420px] xl:w-[480px]" : "flex-1"} border-r border-[#1E293B]`}>
         <div className="p-6 border-b border-[#1E293B] space-y-4">
           <div className="flex items-center justify-between">
             <div>
@@ -105,30 +267,52 @@ export function KnowledgePage() {
                 </button>
               </div>
               <div
-                onDrop={e => { e.preventDefault(); setDragOver(false); }}
+                onDrop={e => {
+                  e.preventDefault();
+                  setDragOver(false);
+                  handleFilePick(e.dataTransfer.files?.[0] ?? null);
+                }}
                 onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
                 onClick={() => fileRef.current?.click()}
                 className={`border-2 border-dashed rounded-xl px-4 py-6 text-center cursor-pointer transition-all
                   ${dragOver ? "border-cyan-400 bg-cyan-400/5" : "border-[#334155] hover:border-[#475569]"}`}
               >
-                <input ref={fileRef} type="file" accept=".pdf,.txt,.md,.docx" className="hidden" />
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".pdf,.txt,.md,.docx"
+                  className="hidden"
+                  onChange={e => handleFilePick(e.target.files?.[0] ?? null)}
+                />
                 <Upload className="w-5 h-5 text-slate-500 mx-auto mb-2" />
-                <div className="text-xs text-slate-400">Drop file or click to browse</div>
+                <div className="text-xs text-slate-400">
+                  {uploadFile ? uploadFile.name : "Drop file or click to browse"}
+                </div>
                 <div className="text-[10px] text-slate-600 mt-1">PDF, TXT, Markdown, DOCX</div>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs text-slate-500 mb-1">Source name</label>
                   <input
+                    value={uploadName}
+                    onChange={e => setUploadName(e.target.value)}
                     placeholder="e.g. Billing Runbook"
                     className="w-full bg-[#0B1220] border border-[#334155] rounded-lg px-3 py-1.5 text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-cyan-400 transition-colors"
                   />
                 </div>
                 <div className="flex items-end">
-                  <Button size="sm" className="w-full bg-cyan-400 text-slate-950 hover:bg-cyan-300 text-xs">Upload & Ingest</Button>
+                  <Button
+                    size="sm"
+                    className="w-full bg-cyan-400 text-slate-950 hover:bg-cyan-300 text-xs disabled:opacity-40"
+                    disabled={!uploadFile || uploading}
+                    onClick={handleUpload}
+                  >
+                    {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Upload & Ingest"}
+                  </Button>
                 </div>
               </div>
+              {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
             </div>
           )}
 
@@ -155,33 +339,37 @@ export function KnowledgePage() {
               <input
                 value={ragQuery}
                 onChange={e => setRagQuery(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleRagSearch()}
                 placeholder="Payment successful but subscription not activated."
                 className="flex-1 bg-[#0F172A] border border-[#1E293B] rounded-lg px-3 py-1.5 text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-cyan-400 transition-colors"
               />
               <Button
                 size="sm"
-                className="bg-cyan-400/10 text-cyan-400 hover:bg-cyan-400/20 border border-cyan-400/30 text-xs px-3"
-                onClick={() => setRagResults(true)}
+                className="bg-cyan-400/10 text-cyan-400 hover:bg-cyan-400/20 border border-cyan-400/30 text-xs px-3 disabled:opacity-40"
+                disabled={!ragQuery.trim() || ragLoading}
+                onClick={handleRagSearch}
               >
-                Search
+                {ragLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Search"}
               </Button>
             </div>
-            {ragResults && ragQuery && (
+            {ragResults.length > 0 && (
               <div className="mt-3 space-y-2">
-                {chunks.slice(0, 2).map(chunk => (
-                  <div key={chunk.idx} className="bg-[#0F172A] border border-[#1E293B] rounded-lg p-2.5">
+                {ragResults.map(chunk => (
+                  <div key={chunk.id} className="bg-[#0F172A] border border-[#1E293B] rounded-lg p-2.5">
                     <div className="flex items-center gap-2 mb-1.5">
-                      <span className="font-mono text-[10px] text-slate-500">Chunk {chunk.idx}</span>
-                      <span className="text-[10px] font-mono text-emerald-400 bg-emerald-400/10 px-1.5 rounded">0.94</span>
-                      <span className="text-[10px] text-slate-500">Billing Runbook</span>
+                      <span className="font-mono text-[10px] text-slate-500">Chunk {chunk.chunkIndex}</span>
+                      <span className="text-[10px] font-mono text-emerald-400 bg-emerald-400/10 px-1.5 rounded">
+                        {chunk.score.toFixed(2)}
+                      </span>
+                      <span className="text-[10px] text-slate-500">{chunk.source.name}</span>
                     </div>
-                    <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-2">{chunk.preview}</p>
+                    <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-2">{chunk.chunkText}</p>
                     <button
                       className="text-[10px] text-cyan-400 hover:text-cyan-300 mt-1.5 flex items-center gap-1"
-                      onClick={() => handleCopyChunk(chunk.idx)}
+                      onClick={() => handleCopyChunk(chunk.id, chunk.chunkText)}
                     >
                       <Copy className="w-3 h-3" />
-                      {copiedChunk === chunk.idx ? "Copied!" : "Copy context"}
+                      {copiedChunk === chunk.id ? "Copied!" : "Copy context"}
                     </button>
                   </div>
                 ))}
@@ -193,256 +381,303 @@ export function KnowledgePage() {
         {/* Sources table */}
         <div className="flex-1 overflow-y-auto">
           <div className="divide-y divide-[#1E293B]">
-            {filtered.length === 0 ? (
+            {sourcesLoading ? (
+              <div className="flex items-center justify-center py-16 text-slate-600">
+                <Loader2 className="w-5 h-5 animate-spin" />
+              </div>
+            ) : sourcesError ? (
+              <div className="p-12 text-center">
+                <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-3" />
+                <div className="text-sm text-red-400 mb-3">{sourcesError}</div>
+                <Button size="sm" className="bg-cyan-400/10 text-cyan-400 hover:bg-cyan-400/20 text-xs" onClick={loadSources}>
+                  Retry
+                </Button>
+              </div>
+            ) : filtered.length === 0 ? (
               <div className="p-12 text-center">
                 <Database className="w-10 h-10 text-slate-700 mx-auto mb-3" />
                 <div className="text-sm font-medium text-slate-400 mb-1">No sources found</div>
                 <div className="text-xs text-slate-600">Upload your first knowledge source to get started.</div>
               </div>
-            ) : filtered.map(src => (
-              <div
-                key={src.id}
-                onClick={() => { setSelectedSource(src); setActiveTab("overview"); }}
-                className={`flex items-center gap-3 px-5 py-3.5 hover:bg-[#0F172A] cursor-pointer transition-colors ${selectedSource?.id === src.id ? "bg-cyan-400/5 border-r-2 border-r-cyan-400" : ""}`}
-              >
-                <FileText className="w-4 h-4 text-slate-500 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-slate-200 truncate">{src.name}</span>
-                    <span className="font-mono text-[10px] text-slate-600">{src.type}</span>
+            ) : filtered.map(src => {
+              const status = toDisplayStatus(src.status);
+              return (
+                <div
+                  key={src.id}
+                  onClick={() => { setSelectedId(src.id); setActiveTab("overview"); }}
+                  className={`flex items-center gap-3 px-5 py-3.5 hover:bg-[#0F172A] cursor-pointer transition-colors ${selectedId === src.id ? "bg-cyan-400/5 border-r-2 border-r-cyan-400" : ""}`}
+                >
+                  <FileText className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-slate-200 truncate">{src.name}</span>
+                      <span className="font-mono text-[10px] text-slate-600">{fileExtLabel(src)}</span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      {src.documentsCount ? `${src.documentsCount} docs · ` : ""}{formatBytes(src.sizeBytes)} · {formatRelativeTime(src.updatedAt)}
+                    </div>
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">
-                    {src.chunks > 0 ? `${src.chunks} chunks · ` : ""}{src.size} · {src.updated}
+                  <div className="flex items-center gap-1">
+                    {statusIcon(status)}
+                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${statusBadge(status)}`}>
+                      {status}
+                    </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  {statusIcon(src.status)}
-                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${statusBadge(src.status)}`}>
-                    {src.status}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
 
       {/* Source detail */}
-      {selectedSource && (
+      {selectedId && (
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Detail header */}
-          <div className="px-6 py-4 border-b border-[#1E293B] flex items-center gap-4">
-            <button
-              onClick={() => setSelectedSource(null)}
-              className="lg:hidden text-slate-500 hover:text-slate-300"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-base font-semibold text-slate-100">{selectedSource.name}</h2>
-                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border flex items-center gap-1 ${statusBadge(selectedSource.status)}`}>
-                  {statusIcon(selectedSource.status)} {selectedSource.status}
-                </span>
-                <span className="font-mono text-[10px] text-slate-600">{selectedSource.type}</span>
+          {detailLoading || !selected || !selectedStatus ? (
+            <div className="flex-1 flex items-center justify-center">
+              <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
+            </div>
+          ) : (
+            <>
+              {/* Detail header */}
+              <div className="px-6 py-4 border-b border-[#1E293B] flex items-center gap-4">
+                <button
+                  onClick={() => setSelectedId(null)}
+                  className="lg:hidden text-slate-500 hover:text-slate-300"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-base font-semibold text-slate-100">{selected.name}</h2>
+                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border flex items-center gap-1 ${statusBadge(selectedStatus)}`}>
+                      {statusIcon(selectedStatus)} {selectedStatus}
+                    </span>
+                    <span className="font-mono text-[10px] text-slate-600">{fileExtLabel(selected)}</span>
+                  </div>
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    Updated {formatRelativeTime(selected.updatedAt)} · {formatBytes(selected.sizeBytes)}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-[#334155] text-slate-400 hover:text-slate-200 hover:bg-[#1E293B] bg-transparent text-xs disabled:opacity-40"
+                    disabled={reingesting}
+                    onClick={handleReingest}
+                  >
+                    {reingesting ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1.5" />}
+                    Re-ingest
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-red-400/30 text-red-400 hover:bg-red-400/10 bg-transparent text-xs disabled:opacity-40"
+                    disabled={deleting}
+                    onClick={handleDelete}
+                  >
+                    {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                  </Button>
+                </div>
               </div>
-              <div className="text-xs text-slate-500 mt-0.5">Updated {selectedSource.updated} · {selectedSource.size}</div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" className="border-[#334155] text-slate-400 hover:text-slate-200 hover:bg-[#1E293B] bg-transparent text-xs">
-                <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Re-ingest
-              </Button>
-              <Button variant="outline" size="sm" className="border-red-400/30 text-red-400 hover:bg-red-400/10 bg-transparent text-xs">
-                <Trash2 className="w-3.5 h-3.5" />
-              </Button>
-            </div>
-          </div>
 
-          {/* Tabs */}
-          <div className="flex gap-0.5 px-6 border-b border-[#1E293B] bg-[#020617]">
-            {["overview", "documents", "chunks", "errors", "activity"].map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-3 text-sm capitalize border-b-2 transition-colors ${activeTab === tab ? "border-cyan-400 text-cyan-400" : "border-transparent text-slate-500 hover:text-slate-300"}`}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
+              {/* Tabs */}
+              <div className="flex gap-0.5 px-6 border-b border-[#1E293B] bg-[#020617]">
+                {["overview", "documents", "chunks", "errors"].map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`px-4 py-3 text-sm capitalize border-b-2 transition-colors ${activeTab === tab ? "border-cyan-400 text-cyan-400" : "border-transparent text-slate-500 hover:text-slate-300"}`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
 
-          {/* Tab content */}
-          <div className="flex-1 overflow-y-auto p-6">
-            {activeTab === "overview" && (
-              <div className="space-y-5 max-w-2xl">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {[
-                    { label: "Documents", value: selectedSource.docs },
-                    { label: "Chunks", value: selectedSource.chunks > 0 ? selectedSource.chunks.toLocaleString() : "—" },
-                    { label: "Size", value: selectedSource.size },
-                    { label: "Created", value: selectedSource.created },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-3 text-center">
-                      <div className="font-mono text-lg font-bold text-cyan-400">{value}</div>
-                      <div className="text-xs text-slate-500 mt-0.5">{label}</div>
+              {/* Tab content */}
+              <div className="flex-1 overflow-y-auto p-6">
+                {activeTab === "overview" && (
+                  <div className="space-y-5 max-w-2xl">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {[
+                        { label: "Documents", value: selected.documents.length },
+                        { label: "Chunks", value: selectedChunksTotal > 0 ? selectedChunksTotal.toLocaleString() : "—" },
+                        { label: "Size", value: formatBytes(selected.sizeBytes) },
+                        { label: "Created", value: new Date(selected.createdAt).toLocaleDateString() },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-3 text-center">
+                          <div className="font-mono text-lg font-bold text-cyan-400">{value}</div>
+                          <div className="text-xs text-slate-500 mt-0.5">{label}</div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
 
-                <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-4">
-                  <div className="text-xs font-semibold text-slate-400 mb-3">Source health</div>
-                  {selectedSource.status === "Ready for AI" && (
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                      <span className="text-sm text-emerald-400">All chunks indexed successfully</span>
+                    <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-4">
+                      <div className="text-xs font-semibold text-slate-400 mb-3">Source health</div>
+                      {selectedStatus === "Ready for AI" && (
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                          <span className="text-sm text-emerald-400">All chunks indexed successfully</span>
+                        </div>
+                      )}
+                      {selectedStatus === "Processing" && (
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="w-4 h-4 text-yellow-400 animate-spin" />
+                          <span className="text-sm text-yellow-400">Processing document...</span>
+                        </div>
+                      )}
+                      {selectedStatus === "Pending" && (
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-slate-400" />
+                          <span className="text-sm text-slate-400">Waiting to be ingested</span>
+                        </div>
+                      )}
+                      {selectedStatus === "Failed" && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4 text-red-400" />
+                            <span className="text-sm text-red-400">Ingestion failed — see Errors tab</span>
+                          </div>
+                          <Button
+                            size="sm"
+                            className="bg-cyan-400/10 text-cyan-400 hover:bg-cyan-400/20 text-xs disabled:opacity-40"
+                            disabled={reingesting}
+                            onClick={handleReingest}
+                          >
+                            Retry ingestion
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {selectedSource.status === "Processing" && (
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="w-4 h-4 text-yellow-400 animate-spin" />
-                      <span className="text-sm text-yellow-400">Processing document...</span>
-                    </div>
-                  )}
-                  {selectedSource.status === "Failed" && (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <AlertCircle className="w-4 h-4 text-red-400" />
-                        <span className="text-sm text-red-400">Ingestion failed — see Errors tab</span>
+
+                    <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-4">
+                      <div className="text-xs font-semibold text-slate-400 mb-3">Metadata</div>
+                      <div className="space-y-2 text-sm">
+                        {[
+                          { k: "Source ID", v: selected.id },
+                          { k: "Type", v: fileExtLabel(selected) },
+                          { k: "Created by", v: selected.createdBy?.name ?? "—" },
+                          { k: "File path", v: selected.filePath ?? "—" },
+                          { k: "Token estimate", v: selectedChunksTotal > 0 ? `~${(selectedChunksTotal * 485).toLocaleString()} tokens` : "—" },
+                        ].map(({ k, v }) => (
+                          <div key={k} className="flex justify-between gap-4">
+                            <span className="text-slate-500">{k}</span>
+                            <span className="font-mono text-xs text-slate-400 truncate">{v}</span>
+                          </div>
+                        ))}
                       </div>
-                      <Button size="sm" className="bg-cyan-400/10 text-cyan-400 hover:bg-cyan-400/20 text-xs">
-                        Retry ingestion
-                      </Button>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
-                <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-4">
-                  <div className="text-xs font-semibold text-slate-400 mb-3">Metadata</div>
-                  <div className="space-y-2 text-sm">
-                    {[
-                      { k: "Source ID", v: `src_${selectedSource.id}` },
-                      { k: "File type", v: selectedSource.type },
-                      { k: "Embedding model", v: "text-embedding-3-small" },
-                      { k: "Chunk strategy", v: "Recursive character (512 tokens)" },
-                      { k: "Token estimate", v: selectedSource.chunks > 0 ? `~${(selectedSource.chunks * 485).toLocaleString()} tokens` : "—" },
-                    ].map(({ k, v }) => (
-                      <div key={k} className="flex justify-between gap-4">
-                        <span className="text-slate-500">{k}</span>
-                        <span className="font-mono text-xs text-slate-400 truncate">{v}</span>
+                {activeTab === "chunks" && (
+                  <div className="space-y-3 max-w-2xl">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-slate-400">{selectedChunksTotal} total chunks</span>
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500" />
+                        <input
+                          value={chunkFilter}
+                          onChange={e => setChunkFilter(e.target.value)}
+                          onKeyDown={e => e.key === "Enter" && handleChunkSearch()}
+                          placeholder="Filter chunks..."
+                          className="bg-[#0F172A] border border-[#1E293B] rounded-lg pl-7 pr-3 py-1.5 text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#334155] w-48"
+                        />
+                      </div>
+                    </div>
+                    {chunkSearching ? (
+                      <div className="flex items-center justify-center py-10 text-slate-600">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      </div>
+                    ) : chunkResults.length === 0 ? (
+                      <div className="text-center py-10 text-xs text-slate-600">
+                        {chunkFilter ? "No matching chunks in this source." : "Search this source's chunks by meaning above."}
+                      </div>
+                    ) : chunkResults.map(chunk => (
+                      <div key={chunk.id} className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-4">
+                        <div className="flex items-center gap-3 mb-2">
+                          <span className="font-mono text-xs text-slate-500">Chunk {chunk.chunkIndex}</span>
+                          {chunk.tokenCount != null && (
+                            <span className="font-mono text-[10px] text-slate-600">{chunk.tokenCount} tokens</span>
+                          )}
+                          <span className="font-mono text-[10px] text-emerald-400 bg-emerald-400/10 px-1.5 rounded">
+                            {chunk.score.toFixed(2)}
+                          </span>
+                          <div className="ml-auto flex gap-2">
+                            <button
+                              onClick={() => handleCopyChunk(chunk.id, chunk.chunkText)}
+                              className="text-slate-500 hover:text-slate-300 transition-colors"
+                            >
+                              {copiedChunk === chunk.id ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-400 leading-relaxed">{chunk.chunkText}</p>
                       </div>
                     ))}
                   </div>
-                </div>
-              </div>
-            )}
+                )}
 
-            {activeTab === "chunks" && (
-              <div className="space-y-3 max-w-2xl">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-slate-400">{selectedSource.chunks} total chunks</span>
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500" />
-                    <input placeholder="Filter chunks..." className="bg-[#0F172A] border border-[#1E293B] rounded-lg pl-7 pr-3 py-1.5 text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#334155] w-48" />
-                  </div>
-                </div>
-                {chunks.map(chunk => (
-                  <div key={chunk.idx} className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-4">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="font-mono text-xs text-slate-500">Chunk {chunk.idx}</span>
-                      <span className="font-mono text-[10px] text-slate-600">{chunk.tokens} tokens</span>
-                      <span className="font-mono text-[10px] text-slate-600">{chunk.size}</span>
-                      <div className="ml-auto flex gap-2">
-                        <button
-                          onClick={() => handleCopyChunk(chunk.idx)}
-                          className="text-slate-500 hover:text-slate-300 transition-colors"
-                        >
-                          {copiedChunk === chunk.idx ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                        </button>
-                        <button className="text-slate-500 hover:text-slate-300 transition-colors">
-                          <ChevronDown className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                    <p className="text-xs text-slate-400 leading-relaxed">{chunk.preview}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {activeTab === "activity" && (
-              <div className="max-w-lg space-y-0">
-                {[
-                  { event: "Uploaded", time: selectedSource.created + ", 2025", icon: Upload, color: "text-slate-400" },
-                  { event: "Ingestion started", time: selectedSource.created + ", 2025 · 2s later", icon: Loader2, color: "text-yellow-400" },
-                  { event: "Chunking complete", time: selectedSource.created + ", 2025 · 45s later", icon: CheckCircle, color: "text-emerald-400" },
-                  { event: "Search tested", time: "2h ago", icon: Search, color: "text-cyan-400" },
-                ].map((evt, i, arr) => {
-                  const Icon = evt.icon;
-                  return (
-                    <div key={i} className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        <div className={`w-7 h-7 rounded-full border border-[#334155] bg-[#0F172A] flex items-center justify-center flex-shrink-0`}>
-                          <Icon className={`w-3.5 h-3.5 ${evt.color}`} />
+                {activeTab === "errors" && (
+                  <div className="max-w-lg">
+                    {selectedStatus === "Failed" ? (
+                      <div className="bg-red-400/5 border border-red-400/20 rounded-xl p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <AlertCircle className="w-4 h-4 text-red-400" />
+                          <span className="text-sm font-medium text-red-400">Ingestion failed</span>
                         </div>
-                        {i < arr.length - 1 && <div className="w-px flex-1 bg-[#1E293B] my-1 min-h-6" />}
+                        <div className="font-mono text-xs text-red-300 bg-red-400/10 rounded-lg p-3 mb-3">
+                          {typeof selected.metadata?.error === "string"
+                            ? selected.metadata.error
+                            : "The ingestion pipeline reported a failure for this source. Check backend logs for details."}
+                        </div>
+                        <div className="text-xs text-slate-500 mb-3">
+                          Occurred: {formatRelativeTime(selected.updatedAt)}
+                        </div>
+                        <Button
+                          size="sm"
+                          className="bg-cyan-400/10 text-cyan-400 hover:bg-cyan-400/20 text-xs border border-cyan-400/20 disabled:opacity-40"
+                          disabled={reingesting}
+                          onClick={handleReingest}
+                        >
+                          <RefreshCw className="w-3 h-3 mr-1.5" /> Retry ingestion
+                        </Button>
                       </div>
-                      <div className="pb-4 pt-1">
-                        <div className="text-sm text-slate-300">{evt.event}</div>
-                        <div className="text-xs text-slate-500">{evt.time}</div>
+                    ) : (
+                      <div className="text-center py-12 text-slate-600">
+                        <CheckCircle className="w-8 h-8 mx-auto mb-2 text-emerald-600" />
+                        <div className="text-sm">No errors recorded</div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {activeTab === "errors" && (
-              <div className="max-w-lg">
-                {selectedSource.status === "Failed" ? (
-                  <div className="bg-red-400/5 border border-red-400/20 rounded-xl p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <AlertCircle className="w-4 h-4 text-red-400" />
-                      <span className="text-sm font-medium text-red-400">Ingestion failed</span>
-                    </div>
-                    <div className="font-mono text-xs text-red-300 bg-red-400/10 rounded-lg p-3 mb-3">
-                      ParseError: Unable to extract text from encrypted PDF. The document appears to be password-protected.
-                    </div>
-                    <div className="text-xs text-slate-500 mb-3">Occurred: 3 days ago · Chunk: 1</div>
-                    <Button size="sm" className="bg-cyan-400/10 text-cyan-400 hover:bg-cyan-400/20 text-xs border border-cyan-400/20">
-                      <RefreshCw className="w-3 h-3 mr-1.5" /> Retry ingestion
-                    </Button>
+                    )}
                   </div>
-                ) : (
-                  <div className="text-center py-12 text-slate-600">
-                    <CheckCircle className="w-8 h-8 mx-auto mb-2 text-emerald-600" />
-                    <div className="text-sm">No errors recorded</div>
+                )}
+
+                {activeTab === "documents" && (
+                  <div className="max-w-2xl">
+                    {selected.documents.length === 0 ? (
+                      <div className="text-center py-12 text-slate-600 text-sm">No documents in this source yet.</div>
+                    ) : (
+                      <div className="divide-y divide-[#1E293B] bg-[#0F172A] border border-[#1E293B] rounded-xl overflow-hidden">
+                        {selected.documents.map(doc => (
+                          <div key={doc.id} className="flex items-center gap-3 px-4 py-3">
+                            <FileText className="w-4 h-4 text-slate-500" />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm text-slate-300 truncate">{doc.title}</div>
+                              <div className="text-[11px] text-slate-500 font-mono">{doc.chunksCount} chunks</div>
+                            </div>
+                            <span className="text-xs text-slate-500">{new Date(doc.createdAt).toLocaleDateString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            )}
-
-            {activeTab === "documents" && (
-              <div className="max-w-2xl">
-                <div className="divide-y divide-[#1E293B] bg-[#0F172A] border border-[#1E293B] rounded-xl overflow-hidden">
-                  {[{ title: selectedSource.name, mime: selectedSource.type === "PDF" ? "application/pdf" : selectedSource.type === "MD" ? "text/markdown" : "application/vnd.openxmlformats", size: selectedSource.size, created: selectedSource.created, status: selectedSource.status }].map((doc, i) => (
-                    <div key={i} className="flex items-center gap-3 px-4 py-3">
-                      <FileText className="w-4 h-4 text-slate-500" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm text-slate-300 truncate">{doc.title}</div>
-                        <div className="text-[11px] text-slate-500 font-mono">{doc.mime}</div>
-                      </div>
-                      <span className="text-xs text-slate-500">{doc.size}</span>
-                      <span className="text-xs text-slate-500">{doc.created}</span>
-                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${statusBadge(doc.status as Status)}`}>{doc.status}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+            </>
+          )}
         </div>
       )}
     </div>
   );
 }
-

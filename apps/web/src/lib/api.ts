@@ -24,6 +24,16 @@ import type {
   ListChatConversationsResponse
 } from "@/types/chat";
 
+import type {
+  AgentRunDetailResponse,
+  AgentRunTimelineResponse,
+  AgentRunsSummaryResponse,
+  ApproveToolCallResponse,
+  ListAgentRunsResponse,
+  PendingToolCallsResponse,
+  RejectToolCallResponse
+} from "@/types/agentic";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 if (!API_URL) {
@@ -336,6 +346,147 @@ export function deleteChatConversation(conversationId: string) {
       headers: {
         Authorization: `Bearer ${token}`
       }
+    }
+  );
+}
+
+type ListAgentRunsParams = {
+  status?: string;
+  conversationId?: string;
+  limit?: number;
+  from?: string;
+  to?: string;
+};
+
+export function listAgentRuns(params: ListAgentRunsParams = {}) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  const search = new URLSearchParams();
+  if (params.status) search.set("status", params.status);
+  if (params.conversationId) search.set("conversationId", params.conversationId);
+  if (params.limit) search.set("limit", String(params.limit));
+  if (params.from) search.set("from", params.from);
+  if (params.to) search.set("to", params.to);
+
+  const qs = search.toString();
+
+  return request<ListAgentRunsResponse>(
+    `/api/chat/agent/runs${qs ? `?${qs}` : ""}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
+}
+
+export function getAgentRunsSummary() {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<AgentRunsSummaryResponse>("/api/chat/agent/runs/summary", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+}
+
+export function getAgentRunDetail(agentRunId: string) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<AgentRunDetailResponse>(
+    `/api/chat/agent/runs/${agentRunId}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
+}
+
+export function getAgentRunTimeline(agentRunId: string) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<AgentRunTimelineResponse>(
+    `/api/chat/agent/runs/${agentRunId}/timeline`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
+}
+
+export function listPendingToolCalls() {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<PendingToolCallsResponse>(
+    "/api/chat/agent/tool-calls/pending",
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
+}
+
+export function approveToolCall(toolCallId: string) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<ApproveToolCallResponse>(
+    `/api/chat/agent/tool-calls/${toolCallId}/approve`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
+}
+
+export function rejectToolCall(toolCallId: string, reason?: string) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<RejectToolCallResponse>(
+    `/api/chat/agent/tool-calls/${toolCallId}/reject`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ reason: reason || undefined })
     }
   );
 }

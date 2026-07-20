@@ -87,7 +87,7 @@ export function OnboardingPage() {
             return (
               <div key={step.id} className="flex gap-3">
                 <div className="flex flex-col items-center">
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 border
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 border
                     ${done ? "border-emerald-400 bg-emerald-400/10" : active ? "border-cyan-400 bg-cyan-400/10" : "border-slate-700 bg-slate-800"}
                   `}>
                     {done ? (
@@ -156,7 +156,7 @@ export function OnboardingPage() {
                 {uploadState === "uploading" && (
                   <div className="space-y-4">
                     <div className="flex items-center gap-3 bg-[#0F172A] border border-[#1E293B] rounded-lg p-3 text-left">
-                      <FileText className="w-5 h-5 text-cyan-400 flex-shrink-0" />
+                      <FileText className="w-5 h-5 text-cyan-400 shrink-0" />
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium text-slate-300 truncate">{fileName}</div>
                         <div className="text-xs text-slate-500">Uploading... {uploadProgress}%</div>
@@ -174,7 +174,7 @@ export function OnboardingPage() {
                 {uploadState === "processing" && (
                   <div className="space-y-4">
                     <div className="flex items-center gap-3 bg-[#0F172A] border border-[#1E293B] rounded-lg p-3 text-left">
-                      <Loader2 className="w-5 h-5 text-cyan-400 animate-spin flex-shrink-0" />
+                      <Loader2 className="w-5 h-5 text-cyan-400 animate-spin shrink-0" />
                       <div>
                         <div className="text-sm font-medium text-slate-300">{fileName}</div>
                         <div className="text-xs text-slate-500">Processing document...</div>

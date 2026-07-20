@@ -55,4 +55,4 @@ prune.log
 
 
 services/api/eval-reports-agentic/
-services/api/eval-reports-agentic-test/
+services/api/eval-reports-agentic-test/*.patch

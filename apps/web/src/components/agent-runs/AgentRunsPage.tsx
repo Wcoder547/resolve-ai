@@ -1,156 +1,109 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
-  Activity, CheckCircle, XCircle, Clock, Zap, FileText,
-  ChevronRight, X, ChevronDown, ChevronUp, Copy, Download,
-  RefreshCw, AlertCircle, Ticket, Loader2, Filter, Search
+  Activity, CheckCircle, XCircle, Clock, Copy,
+  RefreshCw, AlertCircle, Loader2, Filter, Search, ChevronRight,
+  ChevronDown, ChevronUp, X
 } from "lucide-react";
 import { Button } from "../ui/button";
+import { listAgentRuns, getAgentRunDetail } from "@/lib/api";
+import type { AgentRunLite, AgentRunDetail, AgentStep, AgentToolCall } from "@/types/agentic";
+import { formatRelativeTime } from "@/lib/format";
 
-type RunStatus = "Completed" | "Failed" | "Running" | "Timeout";
+type RunStatus = "Completed" | "Failed" | "Running" | "Guardrail warning";
 
-interface Run {
-  id: string;
-  trigger: string;
-  status: RunStatus;
-  provider: string;
-  model: string;
-  duration: string;
-  chunks: number;
-  toolCalls: number;
-  created: string;
-  tokens: number;
-  relatedTo?: string;
+function toDisplayStatus(status: string): RunStatus {
+  if (status === "COMPLETED") return "Completed";
+  if (status === "FAILED") return "Failed";
+  if (status === "RUNNING") return "Running";
+  return "Guardrail warning";
 }
-
-const runs: Run[] = [
-  { id: "run_7f3k2m9x", trigger: "Ticket TKT-2891 assigned", status: "Completed", provider: "OpenRouter", model: "GPT-4o", duration: "1.47s", chunks: 4, toolCalls: 1, created: "2m ago", tokens: 2341, relatedTo: "TKT-2891" },
-  { id: "run_4p9n1r2q", trigger: "Incident INC-47 created", status: "Completed", provider: "OpenRouter", model: "GPT-4o", duration: "2.13s", chunks: 6, toolCalls: 2, created: "18m ago", tokens: 3892, relatedTo: "INC-47" },
-  { id: "run_8m2j5x1w", trigger: "Manual chat query", status: "Completed", provider: "OpenRouter", model: "GPT-4o", duration: "1.02s", chunks: 3, toolCalls: 0, created: "35m ago", tokens: 1654 },
-  { id: "run_3v7q9k4z", trigger: "Ticket TKT-2884 assigned", status: "Failed", provider: "Groq", model: "llama-3.1-70b", duration: "0.31s", chunks: 0, toolCalls: 0, created: "1h ago", tokens: 0, relatedTo: "TKT-2884" },
-  { id: "run_6c1n8t5y", trigger: "Approval APR-290 review", status: "Completed", provider: "OpenRouter", model: "GPT-4o", duration: "1.78s", chunks: 5, toolCalls: 1, created: "1h ago", tokens: 2987, relatedTo: "APR-290" },
-  { id: "run_2x4h7p3s", trigger: "Scheduled knowledge sync", status: "Timeout", provider: "OpenRouter", model: "GPT-4o", duration: "30.0s", chunks: 0, toolCalls: 0, created: "2h ago", tokens: 421 },
-  { id: "run_9q8l3m7r", trigger: "Manual chat query", status: "Running", provider: "OpenRouter", model: "GPT-4o", duration: "—", chunks: 0, toolCalls: 0, created: "just now", tokens: 0 },
-];
 
 const statusBadge = (s: RunStatus) => ({
   Completed: "bg-emerald-400/10 text-emerald-400 border-emerald-400/20",
   Failed: "bg-red-400/10 text-red-400 border-red-400/20",
   Running: "bg-cyan-400/10 text-cyan-400 border-cyan-400/20",
-  Timeout: "bg-orange-400/10 text-orange-400 border-orange-400/20",
+  "Guardrail warning": "bg-orange-400/10 text-orange-400 border-orange-400/20",
 }[s]);
 
 const statusIcon = (s: RunStatus) => ({
   Completed: <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />,
   Failed: <XCircle className="w-3.5 h-3.5 text-red-400" />,
   Running: <Loader2 className="w-3.5 h-3.5 text-cyan-400 animate-spin" />,
-  Timeout: <AlertCircle className="w-3.5 h-3.5 text-orange-400" />,
+  "Guardrail warning": <AlertCircle className="w-3.5 h-3.5 text-orange-400" />,
 }[s]);
 
-interface TraceStep {
-  label: string;
-  status: "done" | "failed" | "running" | "pending";
-  timestamp: string;
-  duration: string;
-  input?: string;
-  output?: string;
-  meta?: Record<string, string>;
+type TraceEntry =
+  | { kind: "step"; data: AgentStep }
+  | { kind: "tool"; data: AgentToolCall };
+
+function traceStatusColor(status: string) {
+  const s = status.toLowerCase();
+  if (s.includes("fail") || s.includes("error") || s === "rejected") {
+    return { border: "border-red-400 bg-red-400/10", icon: <XCircle className="w-4 h-4 text-red-400" /> };
+  }
+  if (s.includes("run") || s.includes("pending")) {
+    return { border: "border-cyan-400 bg-cyan-400/10", icon: <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" /> };
+  }
+  return { border: "border-emerald-400 bg-emerald-400/10", icon: <CheckCircle className="w-4 h-4 text-emerald-400" /> };
 }
 
-const getTraceSteps = (run: Run): TraceStep[] => {
-  if (run.status === "Failed") return [
-    { label: "Retrieval", status: "failed", timestamp: run.created, duration: "210ms", input: "Query: API authentication failing after key rotation", output: "Error: Provider connection refused (Groq)", meta: { provider: run.provider, model: run.model } },
-  ];
-
-  if (run.status === "Running") return [
-    { label: "Retrieval", status: "done", timestamp: "just now", duration: "195ms", input: "Query: Manual chat query", output: "4 chunks retrieved", meta: { topScore: "0.92" } },
-    { label: "Context selection", status: "running", timestamp: "just now", duration: "—", input: "4 candidate chunks", output: "Processing..." },
-  ];
-
-  return [
-    { label: "Retrieval", status: "done", timestamp: run.created, duration: "210ms", input: `Query: ${run.trigger}`, output: `${run.chunks} chunks retrieved · avg score 0.91`, meta: { topScore: "0.94", source: "Billing Runbook" } },
-    { label: "Context selection", status: "done", timestamp: run.created, duration: "45ms", input: `${run.chunks} candidate chunks`, output: `${Math.min(run.chunks, 3)} chunks selected for context window`, meta: { tokenBudget: "2048" } },
-    { label: "LLM call", status: "done", timestamp: run.created, duration: "890ms", input: "System prompt + context + user query", output: "Answer generated with sources", meta: { provider: run.provider, model: run.model, tokens: run.tokens.toString(), promptTokens: Math.round(run.tokens * 0.6).toString(), completionTokens: Math.round(run.tokens * 0.4).toString() } },
-    ...(run.toolCalls > 0 ? [
-      { label: "Tool call", status: "done" as const, timestamp: run.created, duration: "320ms", input: `create_github_issue({ title: "Webhook timeout", labels: ["bug"] })`, output: `Issue #1234 created successfully`, meta: { tool: "github_create_issue", result: "success" } },
-    ] : []),
-    ...(run.toolCalls > 1 ? [
-      { label: "Approval checkpoint", status: "done" as const, timestamp: run.created, duration: "4.2s", input: "Action: send_escalation_email · Risk: Medium", output: "Approved by Jane D.", meta: { approvalId: "APR-290", approvedBy: "Jane D." } },
-    ] : []),
-    { label: "Final output", status: "done", timestamp: run.created, duration: "12ms", input: "Structured response object", output: "Answer delivered · grounded · sources cited", meta: { grounded: "true", sourcesUsed: run.chunks.toString() } },
-  ];
-};
-
-function TraceStep({ step, index }: { step: TraceStep; index: number }) {
+function TraceRow({ entry }: { entry: TraceEntry }) {
   const [expanded, setExpanded] = useState(false);
-
-  const stepColor = {
-    done: "border-emerald-400 bg-emerald-400/10",
-    failed: "border-red-400 bg-red-400/10",
-    running: "border-cyan-400 bg-cyan-400/10",
-    pending: "border-slate-600 bg-slate-800",
-  }[step.status];
-
-  const dotColor = {
-    done: <CheckCircle className="w-4 h-4 text-emerald-400" />,
-    failed: <XCircle className="w-4 h-4 text-red-400" />,
-    running: <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />,
-    pending: <div className="w-2 h-2 rounded-full bg-slate-600" />,
-  }[step.status];
+  const label = entry.kind === "step" ? entry.data.agentName : `Tool: ${entry.data.toolName}`;
+  const status = entry.data.status;
+  const timestamp = entry.data.createdAt ? formatRelativeTime(entry.data.createdAt) : "—";
+  const duration = entry.data.latencyMs != null ? `${entry.data.latencyMs}ms` : "—";
+  const output = entry.data.output ? JSON.stringify(entry.data.output) : entry.data.error || "";
+  const { border, icon } = traceStatusColor(status);
 
   return (
     <div className="flex gap-4">
       <div className="flex flex-col items-center">
-        <div className={`w-8 h-8 rounded-full border-2 ${stepColor} flex items-center justify-center flex-shrink-0`}>
-          {dotColor}
+        <div className={`w-8 h-8 rounded-full border-2 ${border} flex items-center justify-center flex-shrink-0`}>
+          {icon}
         </div>
         <div className="w-px flex-1 bg-[#1E293B] my-1 min-h-4" />
       </div>
 
       <div className="pb-4 flex-1 min-w-0">
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="w-full text-left group"
-        >
+        <button onClick={() => setExpanded(!expanded)} className="w-full text-left group">
           <div className="flex items-center gap-3 mb-1">
-            <span className="text-sm font-semibold text-slate-200">{step.label}</span>
-            <span className="font-mono text-[10px] text-slate-500">{step.duration}</span>
-            <span className="font-mono text-[10px] text-slate-600">{step.timestamp}</span>
+            <span className="text-sm font-semibold text-slate-200">{label}</span>
+            <span className="font-mono text-[10px] text-slate-500">{duration}</span>
+            <span className="font-mono text-[10px] text-slate-600">{timestamp}</span>
             <span className="ml-auto text-slate-500 group-hover:text-slate-300 transition-colors">
               {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </span>
           </div>
-          {!expanded && step.output && (
-            <p className="text-xs text-slate-500 truncate">{step.output}</p>
-          )}
+          {!expanded && output && <p className="text-xs text-slate-500 truncate">{output}</p>}
         </button>
 
         {expanded && (
-          <div className="mt-2 space-y-2">
-            <div className="bg-[#0B1220] border border-[#1E293B] rounded-xl p-3 space-y-2">
+          <div className="mt-2 bg-[#0B1220] border border-[#1E293B] rounded-xl p-3 space-y-2">
+            {entry.data.input && (
               <div>
                 <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Input</div>
-                <p className="text-xs font-mono text-slate-400 leading-relaxed">{step.input}</p>
+                <pre className="text-xs font-mono text-slate-400 leading-relaxed whitespace-pre-wrap break-words">
+                  {JSON.stringify(entry.data.input, null, 2)}
+                </pre>
               </div>
+            )}
+            {entry.data.output && (
               <div className="border-t border-[#1E293B] pt-2">
                 <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Output</div>
-                <p className="text-xs font-mono text-slate-400 leading-relaxed">{step.output}</p>
+                <pre className="text-xs font-mono text-slate-400 leading-relaxed whitespace-pre-wrap break-words">
+                  {JSON.stringify(entry.data.output, null, 2)}
+                </pre>
               </div>
-              {step.meta && Object.keys(step.meta).length > 0 && (
-                <div className="border-t border-[#1E293B] pt-2">
-                  <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Metadata</div>
-                  <div className="space-y-1">
-                    {Object.entries(step.meta).map(([k, v]) => (
-                      <div key={k} className="flex justify-between gap-4 text-[11px]">
-                        <span className="font-mono text-slate-600">{k}</span>
-                        <span className="font-mono text-slate-400">{v}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+            )}
+            {entry.data.error && (
+              <div className="border-t border-[#1E293B] pt-2">
+                <div className="text-[10px] font-semibold text-red-400 uppercase tracking-wider mb-1">Error</div>
+                <p className="text-xs font-mono text-red-300 leading-relaxed">{entry.data.error}</p>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -158,14 +111,51 @@ function TraceStep({ step, index }: { step: TraceStep; index: number }) {
   );
 }
 
-function RunDetail({ run, onClose }: { run: Run; onClose: () => void }) {
-  const [copiedId, setCopiedId] = useState(false);
-  const steps = getTraceSteps(run);
+function RunDetail({ runId, onClose }: { runId: string; onClose: () => void }) {
+  const [detail, setDetail] = useState<AgentRunDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    setError("");
+    getAgentRunDetail(runId)
+      .then(res => setDetail(res.data.agentRun))
+      .catch(() => setError("Couldn't load this run."))
+      .finally(() => setLoading(false));
+  }, [runId]);
 
   const handleCopy = () => {
-    setCopiedId(true);
-    setTimeout(() => setCopiedId(false), 1500);
+    navigator.clipboard?.writeText(runId).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   };
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center h-full">
+        <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
+      </div>
+    );
+  }
+
+  if (error || !detail) {
+    return (
+      <div className="flex-1 flex items-center justify-center h-full text-center p-8">
+        <div>
+          <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-2" />
+          <div className="text-sm text-red-400">{error || "Run not found."}</div>
+        </div>
+      </div>
+    );
+  }
+
+  const status = toDisplayStatus(detail.status);
+  const trace: TraceEntry[] = [
+    ...detail.steps.map((s): TraceEntry => ({ kind: "step", data: s })),
+    ...detail.toolCalls.map((t): TraceEntry => ({ kind: "tool", data: t })),
+  ].sort((a, b) => (a.data.createdAt ?? "").localeCompare(b.data.createdAt ?? ""));
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -177,24 +167,16 @@ function RunDetail({ run, onClose }: { run: Run; onClose: () => void }) {
           </button>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
-              <span className="font-mono text-sm text-slate-300">{run.id}</span>
-              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border flex items-center gap-1 ${statusBadge(run.status)}`}>
-                {statusIcon(run.status)} {run.status}
+              <span className="font-mono text-sm text-slate-300">{detail.id.slice(0, 8)}</span>
+              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border flex items-center gap-1 ${statusBadge(status)}`}>
+                {statusIcon(status)} {status}
               </span>
             </div>
             <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
-              <span>{run.trigger}</span>
+              <span>{detail.standaloneQuestion || detail.question}</span>
               <span>·</span>
-              <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{run.created}</span>
+              <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatRelativeTime(detail.createdAt)}</span>
             </div>
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <Button variant="outline" size="sm" className="border-[#334155] text-slate-400 hover:text-slate-200 hover:bg-[#1E293B] bg-transparent text-xs">
-              <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Retry
-            </Button>
-            <Button variant="outline" size="sm" className="border-[#334155] text-slate-400 hover:text-slate-200 hover:bg-[#1E293B] bg-transparent text-xs">
-              <Download className="w-3.5 h-3.5" />
-            </Button>
           </div>
         </div>
       </div>
@@ -203,12 +185,12 @@ function RunDetail({ run, onClose }: { run: Run; onClose: () => void }) {
       <div className="px-5 py-3 border-b border-[#1E293B] bg-[#0B1220]">
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
           {[
-            { label: "Duration", value: run.duration },
-            { label: "Provider", value: run.provider },
-            { label: "Model", value: run.model },
-            { label: "Tokens", value: run.tokens > 0 ? run.tokens.toLocaleString() : "—" },
-            { label: "Chunks", value: run.chunks.toString() },
-            { label: "Tool calls", value: run.toolCalls.toString() },
+            { label: "Duration", value: detail.durationMs != null ? `${(detail.durationMs / 1000).toFixed(2)}s` : "—" },
+            { label: "Provider", value: detail.provider || "—" },
+            { label: "Model", value: detail.model || "—" },
+            { label: "Confidence", value: detail.confidence || "—" },
+            { label: "Steps", value: detail.steps.length.toString() },
+            { label: "Tool calls", value: detail.toolCalls.length.toString() },
           ].map(({ label, value }) => (
             <div key={label}>
               <div className="text-[10px] text-slate-500">{label}</div>
@@ -220,54 +202,86 @@ function RunDetail({ run, onClose }: { run: Run; onClose: () => void }) {
 
       {/* Actions bar */}
       <div className="px-5 py-2.5 border-b border-[#1E293B] flex items-center gap-3">
-        <button
-          onClick={handleCopy}
-          className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors"
-        >
-          {copiedId ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-          {copiedId ? "Copied!" : "Copy run ID"}
+        <button onClick={handleCopy} className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors">
+          {copied ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+          {copied ? "Copied!" : "Copy run ID"}
         </button>
-        {run.relatedTo && (
-          <button className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors">
-            <Ticket className="w-3.5 h-3.5" /> Open {run.relatedTo}
-          </button>
+        {detail.needsEscalation && (
+          <span className="flex items-center gap-1.5 text-xs text-orange-400">
+            <AlertCircle className="w-3.5 h-3.5" /> Needs escalation{detail.escalationReason ? `: ${detail.escalationReason}` : ""}
+          </span>
         )}
       </div>
 
       {/* Trace */}
       <div className="flex-1 overflow-y-auto p-5">
         <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">Execution trace</div>
-        <div>
-          {steps.map((step, i) => (
-            <TraceStep key={i} step={step} index={i} />
-          ))}
-        </div>
+        {trace.length === 0 ? (
+          <p className="text-sm text-slate-600">No recorded steps for this run.</p>
+        ) : (
+          <div>
+            {trace.map((entry, i) => (
+              <TraceRow key={i} entry={entry} />
+            ))}
+          </div>
+        )}
+        {detail.answer && (
+          <div className="mt-4 bg-[#0F172A] border border-[#1E293B] rounded-xl p-4">
+            <div className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wider mb-2">Final answer</div>
+            <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{detail.answer}</p>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 export function AgentRunsPage() {
-  const [selected, setSelected] = useState<Run | null>(null);
+  const [runs, setRuns] = useState<AgentRunLite[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await listAgentRuns({ limit: 50 });
+      setRuns(res.data.runs);
+    } catch {
+      setError("Couldn't load agent runs. Try refreshing.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const filtered = runs.filter(r =>
     search === "" ||
     r.id.includes(search) ||
-    r.trigger.toLowerCase().includes(search.toLowerCase()) ||
-    r.model.toLowerCase().includes(search.toLowerCase())
+    r.question.toLowerCase().includes(search.toLowerCase()) ||
+    (r.model || "").toLowerCase().includes(search.toLowerCase())
   );
+
+  const runningCount = runs.filter(r => r.status === "RUNNING").length;
 
   return (
     <div className="flex h-full bg-[#020617] overflow-hidden">
       {/* Run list */}
-      <div className={`flex flex-col ${selected ? "hidden lg:flex lg:w-[420px] xl:w-[480px]" : "flex-1"} border-r border-[#1E293B]`}>
+      <div className={`flex flex-col ${selectedId ? "hidden lg:flex lg:w-[420px] xl:w-[480px]" : "flex-1"} border-r border-[#1E293B]`}>
         <div className="px-5 py-4 border-b border-[#1E293B]">
           <div className="flex items-center justify-between mb-3">
             <div>
               <h1 className="text-xl font-bold text-slate-50">Agent Runs</h1>
-              <p className="text-xs text-slate-500 mt-0.5">{runs.filter(r => r.status === "Running").length} running · {runs.length} total</p>
+              <p className="text-xs text-slate-500 mt-0.5">{runningCount} running · {runs.length} total</p>
             </div>
+            <Button variant="outline" size="sm" className="border-[#334155] text-slate-400 hover:text-slate-200 hover:bg-[#1E293B] bg-transparent text-xs" onClick={load}>
+              <RefreshCw className="w-3.5 h-3.5" />
+            </Button>
           </div>
           <div className="flex gap-2">
             <div className="relative flex-1">
@@ -285,52 +299,66 @@ export function AgentRunsPage() {
           </div>
         </div>
 
-        {/* Table header */}
-        <div className="px-5 py-2 border-b border-[#1E293B] hidden sm:grid grid-cols-[1fr_80px_80px_60px] gap-3">
-          {["Run", "Status", "Duration", "Tokens"].map(h => (
-            <div key={h} className="text-[10px] font-medium text-slate-600 uppercase tracking-wider">{h}</div>
-          ))}
-        </div>
-
         <div className="flex-1 overflow-y-auto divide-y divide-[#1E293B]">
-          {filtered.map(run => (
-            <button
-              key={run.id}
-              onClick={() => setSelected(run)}
-              className={`w-full text-left px-5 py-3.5 hover:bg-[#0F172A] transition-colors
-                ${selected?.id === run.id ? "bg-cyan-400/5 border-r-2 border-r-cyan-400" : ""}
-              `}
-            >
-              <div className="flex items-start gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                    <span className="font-mono text-xs text-slate-400">{run.id}</span>
-                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border flex items-center gap-1 ${statusBadge(run.status)}`}>
-                      {statusIcon(run.status)} {run.status}
-                    </span>
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="w-5 h-5 text-slate-600 animate-spin" />
+            </div>
+          ) : error ? (
+            <div className="py-16 text-center px-5">
+              <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-3" />
+              <div className="text-sm text-red-400 mb-3">{error}</div>
+              <Button size="sm" className="bg-cyan-400/10 text-cyan-400 hover:bg-cyan-400/20 text-xs" onClick={load}>
+                Retry
+              </Button>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="py-16 text-center px-5">
+              <Activity className="w-8 h-8 text-slate-700 mx-auto mb-3" />
+              <div className="text-sm text-slate-500">No agent runs yet</div>
+            </div>
+          ) : filtered.map(run => {
+            const status = toDisplayStatus(run.status);
+            const durationLabel = run.durationMs != null ? `${(run.durationMs / 1000).toFixed(2)}s` : "—";
+            return (
+              <button
+                key={run.id}
+                onClick={() => setSelectedId(run.id)}
+                className={`w-full text-left px-5 py-3.5 hover:bg-[#0F172A] transition-colors
+                  ${selectedId === run.id ? "bg-cyan-400/5 border-r-2 border-r-cyan-400" : ""}
+                `}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                      <span className="font-mono text-xs text-slate-400">{run.id.slice(0, 8)}</span>
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border flex items-center gap-1 ${statusBadge(status)}`}>
+                        {statusIcon(status)} {status}
+                      </span>
+                    </div>
+                    <div className="text-sm text-slate-300 truncate mb-1">{run.question}</div>
+                    <div className="flex items-center gap-3 text-[11px] text-slate-500 flex-wrap">
+                      <span className="font-mono">{run.provider || "—"} · {run.model || "—"}</span>
+                      <span>·</span>
+                      <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{durationLabel}</span>
+                      {run._count && <><span>·</span><span>{run._count.steps} steps</span></>}
+                      {run._count && run._count.toolCalls > 0 && <><span>·</span><span>{run._count.toolCalls} tools</span></>}
+                      <span>·</span>
+                      <span>{formatRelativeTime(run.createdAt)}</span>
+                    </div>
                   </div>
-                  <div className="text-sm text-slate-300 truncate mb-1">{run.trigger}</div>
-                  <div className="flex items-center gap-3 text-[11px] text-slate-500 flex-wrap">
-                    <span className="font-mono">{run.provider} · {run.model}</span>
-                    <span>·</span>
-                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{run.duration}</span>
-                    {run.chunks > 0 && <><span>·</span><span>{run.chunks} chunks</span></>}
-                    {run.toolCalls > 0 && <><span>·</span><span>{run.toolCalls} tools</span></>}
-                    <span>·</span>
-                    <span>{run.created}</span>
-                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-600 shrink-0 mt-1" />
                 </div>
-                <ChevronRight className="w-4 h-4 text-slate-600 flex-shrink-0 mt-1" />
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* Run detail */}
-      {selected ? (
+      {selectedId ? (
         <div className="flex-1 overflow-hidden">
-          <RunDetail run={selected} onClose={() => setSelected(null)} />
+          <RunDetail runId={selectedId} onClose={() => setSelectedId(null)} />
         </div>
       ) : (
         <div className="hidden lg:flex flex-1 items-center justify-center text-center p-8">

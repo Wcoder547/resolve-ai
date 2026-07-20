@@ -153,3 +153,57 @@ export type PendingToolCall = AgentToolCall & {
     createdAt: string;
   };
 };
+
+export type ListAgentRunsResponse = ApiResponse<{
+  runs: AgentRunLite[];
+}>;
+
+export type AgentRunsSummaryResponse = ApiResponse<{
+  totals: {
+    totalRuns: number;
+    runningRuns: number;
+    completedRuns: number;
+    guardrailRuns: number;
+    failedRuns: number;
+  };
+  toolCalls: {
+    pendingApproval: number;
+    executed: number;
+    rejected: number;
+  };
+  last24Hours: {
+    totalRuns: number;
+    groundedRuns: number;
+    escalationRuns: number;
+    averageDurationMs: number | null;
+  };
+}>;
+
+export type AgentRunDetailResponse = ApiResponse<{
+  agentRun: AgentRunDetail;
+}>;
+
+export type AgentRunTimelineResponse = ApiResponse<{
+  agentRunId: string;
+  status: string;
+  durationMs: number | null;
+  events: AgentTimelineEvent[];
+}>;
+
+export type PendingToolCallsResponse = ApiResponse<{
+  toolCalls: PendingToolCall[];
+}>;
+
+export type ApproveToolCallResponse = ApiResponse<{
+  approved: AgentToolCall;
+  executed: AgentToolCall;
+  execution: {
+    status: string;
+    error?: string | null;
+    [key: string]: unknown;
+  };
+}>;
+
+export type RejectToolCallResponse = ApiResponse<{
+  toolCall: AgentToolCall;
+}>;
