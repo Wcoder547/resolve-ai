@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Zap, CheckCircle, Upload, FileText, Loader2,
   AlertCircle, ChevronRight, Database, MessageSquare, Eye
 } from "lucide-react";
 import { Button } from "../ui/button";
+import { uploadKnowledgeFile, getKnowledgeSource, ingestKnowledgeSource } from "@/lib/api";
 
 const steps = [
   { id: 1, label: "Create workspace", icon: Zap, done: true },
@@ -18,42 +19,106 @@ const steps = [
 
 type UploadState = "idle" | "uploading" | "processing" | "done" | "failed";
 
+const POLL_INTERVAL_MS = 2000;
+const MAX_POLL_ATTEMPTS = 30; // ~1 minute of polling before giving up
+
 export function OnboardingPage() {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
+  const pollTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [currentStep, setCurrentStep] = useState(2);
   const [uploadState, setUploadState] = useState<UploadState>("idle");
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState("");
   const [fileName, setFileName] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [sourceName, setSourceName] = useState("");
+  const [sourceId, setSourceId] = useState<string | null>(null);
+  const [resultStats, setResultStats] = useState<{ documents: number; chunks: number } | null>(null);
 
-  const handleFile = (file: File) => {
+  useEffect(() => {
+    return () => {
+      if (pollTimeout.current) clearTimeout(pollTimeout.current);
+    };
+  }, []);
+
+  const pollStatus = useCallback((id: string, attempt = 0) => {
+    getKnowledgeSource(id)
+      .then((res) => {
+        const source = res.data.source;
+
+        if (source.status === "COMPLETED") {
+          const chunks = source.documents.reduce((sum, d) => sum + d.chunksCount, 0);
+          setResultStats({ documents: source.documents.length, chunks });
+          setUploadState("done");
+          setCurrentStep(4);
+          return;
+        }
+
+        if (source.status === "FAILED") {
+          setUploadError("Ingestion failed while processing this document. You can try again.");
+          setUploadState("failed");
+          return;
+        }
+
+        if (attempt >= MAX_POLL_ATTEMPTS) {
+          setUploadError(
+            "This is taking longer than expected. You can check its status on the Knowledge Base page.",
+          );
+          setUploadState("failed");
+          return;
+        }
+
+        pollTimeout.current = setTimeout(() => pollStatus(id, attempt + 1), POLL_INTERVAL_MS);
+      })
+      .catch(() => {
+        setUploadError("Couldn't check processing status. Check the Knowledge Base page for updates.");
+        setUploadState("failed");
+      });
+  }, []);
+
+  const handleFile = async (file: File) => {
     const allowed = [".pdf", ".txt", ".md", ".docx"];
     const ext = "." + file.name.split(".").pop()?.toLowerCase();
     if (!allowed.includes(ext)) {
+      setUploadError("Unsupported file type. Allowed: PDF, TXT, MD, DOCX.");
       setUploadState("failed");
       return;
     }
-    setFileName(file.name);
-    setSourceName(file.name.replace(/\.[^.]+$/, ""));
-    setUploadState("uploading");
-    setUploadProgress(0);
 
-    const interval = setInterval(() => {
-      setUploadProgress(p => {
-        if (p >= 100) {
-          clearInterval(interval);
-          setUploadState("processing");
-          setTimeout(() => {
-            setUploadState("done");
-            setCurrentStep(4);
-          }, 2000);
-          return 100;
-        }
-        return p + 12;
-      });
-    }, 150);
+    setFileName(file.name);
+    setSourceName((prev) => prev || file.name.replace(/\.[^.]+$/, ""));
+    setUploadError("");
+    setUploadState("uploading");
+
+    try {
+      const res = await uploadKnowledgeFile(file, sourceName || undefined);
+      const newSourceId = res.data.source.id;
+      setSourceId(newSourceId);
+      setUploadState("processing");
+      pollStatus(newSourceId);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed. Please try again.");
+      setUploadState("failed");
+    }
+  };
+
+  const handleRetry = async () => {
+    setUploadError("");
+    // Upload itself never completed — just let them pick a file again.
+    if (!sourceId) {
+      setUploadState("idle");
+      return;
+    }
+    // Upload succeeded but ingestion failed/timed out — retry ingestion on the same source.
+    setUploadState("processing");
+    try {
+      await ingestKnowledgeSource(sourceId);
+      pollStatus(sourceId);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Retry failed. Please try again.");
+      setUploadState("failed");
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -154,19 +219,11 @@ export function OnboardingPage() {
                 )}
 
                 {uploadState === "uploading" && (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-3 bg-[#0F172A] border border-[#1E293B] rounded-lg p-3 text-left">
-                      <FileText className="w-5 h-5 text-cyan-400 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-slate-300 truncate">{fileName}</div>
-                        <div className="text-xs text-slate-500">Uploading... {uploadProgress}%</div>
-                      </div>
-                    </div>
-                    <div className="w-full bg-[#1E293B] rounded-full h-1.5">
-                      <div
-                        className="bg-cyan-400 h-1.5 rounded-full transition-all duration-200"
-                        style={{ width: `${uploadProgress}%` }}
-                      />
+                  <div className="flex items-center gap-3 bg-[#0F172A] border border-[#1E293B] rounded-lg p-3 text-left">
+                    <Loader2 className="w-5 h-5 text-cyan-400 animate-spin shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-slate-300 truncate">{fileName}</div>
+                      <div className="text-xs text-slate-500">Uploading...</div>
                     </div>
                   </div>
                 )}
@@ -187,9 +244,9 @@ export function OnboardingPage() {
                 {uploadState === "failed" && (
                   <div className="space-y-3">
                     <AlertCircle className="w-8 h-8 text-red-400 mx-auto" />
-                    <div className="text-sm text-red-400">Unsupported file type. Allowed: PDF, TXT, MD, DOCX.</div>
+                    <div className="text-sm text-red-400">{uploadError || "Something went wrong. Please try again."}</div>
                     <button
-                      onClick={e => { e.stopPropagation(); setUploadState("idle"); }}
+                      onClick={e => { e.stopPropagation(); handleRetry(); }}
                       className="text-xs text-cyan-400 hover:text-cyan-300"
                     >
                       Try again
@@ -232,18 +289,14 @@ export function OnboardingPage() {
                 <span className="text-slate-300 font-medium">{sourceName || fileName}</span> has been chunked, embedded, and is ready for AI queries.
               </p>
               <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-4 mb-8 text-left">
-                <div className="grid grid-cols-3 gap-4 text-center">
+                <div className="grid grid-cols-2 gap-4 text-center">
                   <div>
-                    <div className="text-lg font-bold text-cyan-400 font-mono">1</div>
-                    <div className="text-xs text-slate-500">Document</div>
+                    <div className="text-lg font-bold text-cyan-400 font-mono">{resultStats?.documents ?? "—"}</div>
+                    <div className="text-xs text-slate-500">Document{resultStats?.documents === 1 ? "" : "s"}</div>
                   </div>
                   <div>
-                    <div className="text-lg font-bold text-cyan-400 font-mono">48</div>
+                    <div className="text-lg font-bold text-cyan-400 font-mono">{resultStats?.chunks ?? "—"}</div>
                     <div className="text-xs text-slate-500">Chunks</div>
-                  </div>
-                  <div>
-                    <div className="text-lg font-bold text-cyan-400 font-mono">0.94</div>
-                    <div className="text-xs text-slate-500">Avg quality</div>
                   </div>
                 </div>
               </div>
