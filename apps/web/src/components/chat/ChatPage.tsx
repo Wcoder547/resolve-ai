@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Zap,
   MessageSquare,
@@ -8,8 +8,6 @@ import {
   Plus,
   Trash2,
   Copy,
-  ThumbsUp,
-  ThumbsDown,
   RefreshCw,
   FileText,
   X,
@@ -23,44 +21,41 @@ import {
   Clock,
 } from "lucide-react";
 import { Button } from "../ui/button";
+import {
+  askChatQuestion,
+  listChatConversations,
+  getChatConversation,
+  deleteChatConversation,
+} from "@/lib/api";
+import type { ChatConversationSummary } from "@/types/chat";
+import { formatRelativeTime } from "@/lib/format";
+
+// ---- Local display types --------------------------------------------------
+// Loaded (historical) messages only carry `ChatSource` (citation metadata,
+// no chunk text). Fresh answers from /api/chat/ask also return
+// `retrievedChunks`, which include the actual chunk text. We normalize both
+// into one shape and just treat `chunkText` as optional.
+
+interface DisplaySource {
+  key: string;
+  sourceName: string;
+  documentTitle: string;
+  chunkIndex: number;
+  score: number;
+  chunkText?: string;
+}
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   grounded?: boolean;
-  sources?: Source[];
-  model?: string;
-  responseTime?: string;
-  thinking?: boolean;
+  sources?: DisplaySource[];
+  model?: string | null;
+  provider?: string | null;
+  createdAt?: string;
+  error?: boolean;
 }
-
-interface Source {
-  name: string;
-  doc: string;
-  chunk: string;
-  score: number;
-  preview: string;
-}
-
-const conversations = [
-  {
-    id: "c1",
-    title: "Subscription activation failure",
-    messages: 4,
-    time: "2m ago",
-    active: true,
-  },
-  { id: "c2", title: "Webhook delivery delays", messages: 6, time: "1h ago" },
-  { id: "c3", title: "API authentication errors", messages: 3, time: "3h ago" },
-  {
-    id: "c4",
-    title: "Team member invite flow",
-    messages: 8,
-    time: "Yesterday",
-  },
-  { id: "c5", title: "Duplicate billing charge", messages: 2, time: "2d ago" },
-];
 
 const suggestedPrompts = [
   "Why is a paid subscription still inactive?",
@@ -69,47 +64,51 @@ const suggestedPrompts = [
   "When should a ticket be escalated?",
 ];
 
-const sampleSources: Source[] = [
-  {
-    name: "Billing Runbook",
-    doc: "Subscription Activation Guide",
-    chunk: "Chunk 04",
-    score: 0.94,
-    preview:
-      "Subscription activation is triggered by the subscription.activated webhook event. If this event fails to deliver within 30 seconds, the system retries up to 3 times...",
-  },
-  {
-    name: "Support KB",
-    doc: "Payment Troubleshooting",
-    chunk: "Chunk 11",
-    score: 0.87,
-    preview:
-      "When a charge succeeds but the subscription remains inactive, the most common cause is a failed webhook delivery. Check the Stripe webhook dashboard for delivery attempts...",
-  },
-  {
-    name: "Incident Playbooks",
-    doc: "Billing Incident Response",
-    chunk: "Chunk 02",
-    score: 0.81,
-    preview:
-      "For billing-related incidents where payments succeed but subscriptions are not activated, follow these escalation steps before contacting Stripe support...",
-  },
-];
-
 function AssistantMessage({
   msg,
-  onCopySource,
+  onRegenerate,
+  onOpenSource,
+  regenerating,
 }: {
   msg: Message;
-  onCopySource: (src: Source) => void;
+  onRegenerate: () => void;
+  onOpenSource: (src: DisplaySource) => void;
+  regenerating: boolean;
 }) {
   const [expandedSrc, setExpandedSrc] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
+    navigator.clipboard?.writeText(msg.content).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
+
+  if (msg.error) {
+    return (
+      <div className="ml-8 bg-red-400/5 border border-red-400/20 rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-1">
+          <AlertCircle className="w-4 h-4 text-red-400" />
+          <span className="text-sm font-medium text-red-400">
+            Something went wrong
+          </span>
+        </div>
+        <p className="text-xs text-slate-500 mb-3">{msg.content}</p>
+        <button
+          onClick={onRegenerate}
+          disabled={regenerating}
+          className="flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 disabled:opacity-40"
+        >
+          {regenerating ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="w-3.5 h-3.5" />
+          )}
+          Try again
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
@@ -135,10 +134,7 @@ function AssistantMessage({
             {msg.model}
           </span>
         )}
-        {msg.responseTime && (
-          <span className="text-[10px] text-slate-600">{msg.responseTime}</span>
-        )}
-        {msg.sources && (
+        {msg.sources && msg.sources.length > 0 && (
           <span className="text-[10px] text-slate-600">
             {msg.sources.length} sources
           </span>
@@ -147,66 +143,13 @@ function AssistantMessage({
 
       {/* Answer body */}
       <div className="ml-8 space-y-4">
-        {/* Direct answer */}
-        <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-4 space-y-4">
-          <div>
-            <div className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wider mb-2">
-              Direct Answer
-            </div>
-            <p className="text-sm text-slate-300 leading-relaxed">
-              {msg.content}
-            </p>
+        <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-4">
+          <div className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wider mb-2">
+            Direct Answer
           </div>
-
-          {msg.grounded && (
-            <div>
-              <div className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wider mb-2">
-                Recommended Steps
-              </div>
-              <ol className="space-y-2 text-sm text-slate-300">
-                <li className="flex gap-2">
-                  <span className="text-cyan-400 font-mono text-xs w-5 shrink-0">
-                    1.
-                  </span>
-                  <span>
-                    Check webhook delivery logs in the Stripe dashboard for
-                    failed{" "}
-                    <code className="font-mono text-[11px] text-slate-200 bg-[#1E293B] px-1 rounded">
-                      subscription.activated
-                    </code>{" "}
-                    events
-                  </span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="text-cyan-400 font-mono text-xs w-5 shrink-0">
-                    2.
-                  </span>
-                  <span>
-                    Verify the subscription_id is correctly associated with the
-                    charge in your database
-                  </span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="text-cyan-400 font-mono text-xs w-5 shrink-0">
-                    3.
-                  </span>
-                  <span>
-                    If webhook delivery failed, manually trigger subscription
-                    activation via the admin API
-                  </span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="text-cyan-400 font-mono text-xs w-5 shrink-0">
-                    4.
-                  </span>
-                  <span>
-                    Document the incident and check for similar cases in the
-                    last 24 hours
-                  </span>
-                </li>
-              </ol>
-            </div>
-          )}
+          <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
+            {msg.content}
+          </p>
         </div>
 
         {/* Sources */}
@@ -216,9 +159,9 @@ function AssistantMessage({
               Sources Used
             </div>
             <div className="space-y-2">
-              {msg.sources.map((src, i) => (
+              {msg.sources.map((src) => (
                 <div
-                  key={i}
+                  key={src.key}
                   className="bg-[#0F172A] border border-[#1E293B] rounded-xl overflow-hidden"
                 >
                   <div className="flex items-start gap-3 p-3">
@@ -226,50 +169,54 @@ function AssistantMessage({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-0.5">
                         <span className="text-sm font-medium text-slate-300">
-                          {src.name}
+                          {src.sourceName}
                         </span>
                         <span className="text-[10px] text-slate-500">
-                          {src.doc}
+                          {src.documentTitle}
                         </span>
                         <span className="font-mono text-[10px] text-slate-600">
-                          {src.chunk}
+                          Chunk {src.chunkIndex}
                         </span>
                         <span className="font-mono text-[10px] text-emerald-400 bg-emerald-400/10 px-1.5 rounded">
-                          {src.score}
+                          {src.score.toFixed(2)}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">
-                        {src.preview}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() =>
-                        setExpandedSrc(
-                          expandedSrc === src.name ? null : src.name,
-                        )
-                      }
-                      className="text-slate-500 hover:text-slate-300 transition-colors shrink-0"
-                    >
-                      {expandedSrc === src.name ? (
-                        <ChevronUp className="w-4 h-4" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4" />
+                      {src.chunkText && (
+                        <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">
+                          {src.chunkText}
+                        </p>
                       )}
-                    </button>
+                    </div>
+                    {src.chunkText && (
+                      <button
+                        onClick={() =>
+                          setExpandedSrc(
+                            expandedSrc === src.key ? null : src.key,
+                          )
+                        }
+                        className="text-slate-500 hover:text-slate-300 transition-colors shrink-0"
+                      >
+                        {expandedSrc === src.key ? (
+                          <ChevronUp className="w-4 h-4" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4" />
+                        )}
+                      </button>
+                    )}
                   </div>
-                  {expandedSrc === src.name && (
+                  {expandedSrc === src.key && src.chunkText && (
                     <div className="border-t border-[#1E293B] px-3 py-3">
                       <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
                         Retrieved context
                       </div>
                       <p className="text-xs text-slate-400 leading-relaxed font-mono">
-                        {src.preview}
+                        {src.chunkText}
                       </p>
                       <button
-                        onClick={() => onCopySource(src)}
+                        onClick={() => onOpenSource(src)}
                         className="flex items-center gap-1.5 text-[10px] text-cyan-400 hover:text-cyan-300 mt-2 transition-colors"
                       >
-                        <Copy className="w-3 h-3" /> Copy chunk
+                        <BookOpen className="w-3 h-3" /> Open in source panel
                       </button>
                     </div>
                   )}
@@ -289,7 +236,8 @@ function AssistantMessage({
             </div>
             <p className="text-xs text-slate-500">
               I could not find relevant information in your uploaded knowledge
-              base. Consider uploading additional documentation for this topic.
+              base. Consider uploading additional documentation for this
+              topic.
             </p>
           </div>
         )}
@@ -307,14 +255,17 @@ function AssistantMessage({
             )}
             {copied ? "Copied!" : "Copy answer"}
           </button>
-          <button className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors">
-            <RefreshCw className="w-3.5 h-3.5" /> Regenerate
-          </button>
-          <button className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-emerald-400 transition-colors">
-            <ThumbsUp className="w-3.5 h-3.5" /> Helpful
-          </button>
-          <button className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-red-400 transition-colors">
-            <ThumbsDown className="w-3.5 h-3.5" /> Not helpful
+          <button
+            onClick={onRegenerate}
+            disabled={regenerating}
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors disabled:opacity-40"
+          >
+            {regenerating ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="w-3.5 h-3.5" />
+            )}
+            Regenerate
           </button>
         </div>
       </div>
@@ -336,51 +287,238 @@ function ThinkingIndicator() {
   );
 }
 
+// Normalizers -----------------------------------------------------------
+
+function fromRetrievedChunks(
+  chunks: {
+    id: string;
+    chunkIndex: number;
+    chunkText: string;
+    score: number;
+    source: { name: string };
+    document: { title: string };
+  }[],
+): DisplaySource[] {
+  return chunks.map((c) => ({
+    key: c.id,
+    sourceName: c.source.name,
+    documentTitle: c.document.title,
+    chunkIndex: c.chunkIndex,
+    score: c.score,
+    chunkText: c.chunkText,
+  }));
+}
+
+function fromChatSources(
+  sources: {
+    chunkId: string;
+    sourceName: string;
+    documentTitle: string;
+    chunkIndex: number;
+    score: number;
+  }[],
+): DisplaySource[] {
+  return sources.map((s) => ({
+    key: s.chunkId,
+    sourceName: s.sourceName,
+    documentTitle: s.documentTitle,
+    chunkIndex: s.chunkIndex,
+    score: s.score,
+  }));
+}
+
 export function ChatPage() {
-  const [activeConv, setActiveConv] = useState("c1");
+  const [conversations, setConversations] = useState<ChatConversationSummary[]>([]);
+  const [convosLoading, setConvosLoading] = useState(true);
+  const [convosError, setConvosError] = useState("");
+  const [convSearch, setConvSearch] = useState("");
+
+  const [activeConv, setActiveConv] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+
   const [showSourceDrawer, setShowSourceDrawer] = useState(false);
-  const [selectedChunkSrc, setSelectedChunkSrc] = useState<Source | null>(null);
+  const [drawerSources, setDrawerSources] = useState<DisplaySource[]>([]);
+  const [selectedSource, setSelectedSource] = useState<DisplaySource | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const loadConversations = useCallback(async () => {
+    setConvosLoading(true);
+    setConvosError("");
+    try {
+      const res = await listChatConversations();
+      setConversations(res.data.conversations);
+    } catch {
+      setConvosError("Couldn't load conversations.");
+    } finally {
+      setConvosLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, thinking]);
 
-  const sendMessage = () => {
-    if (!input.trim() || thinking) return;
+  const openConversation = async (id: string) => {
+    setActiveConv(id);
+    setMessagesLoading(true);
+    try {
+      const res = await getChatConversation(id);
+      setMessages(
+        res.data.conversation.messages
+          .filter((m) => m.role !== "SYSTEM")
+          .map((m) => ({
+            id: m.id,
+            role: m.role === "USER" ? "user" : "assistant",
+            content: m.content,
+            grounded: m.metadata?.grounded,
+            model: m.metadata?.model ?? null,
+            provider: m.metadata?.provider ?? null,
+            sources: m.sources && m.sources.length > 0 ? fromChatSources(m.sources) : undefined,
+            createdAt: m.createdAt,
+          })),
+      );
+    } catch {
+      setMessages([
+        {
+          id: "load-error",
+          role: "assistant",
+          content: "Couldn't load this conversation. Please try again.",
+          error: true,
+        },
+      ]);
+    } finally {
+      setMessagesLoading(false);
+    }
+  };
+
+  const startNewChat = () => {
+    setActiveConv(null);
+    setMessages([]);
+    setInput("");
+  };
+
+  const runAsk = async (question: string, conversationId: string | null) => {
+    const res = await askChatQuestion(question, conversationId ?? undefined);
+    const assistantMsg: Message = {
+      id: res.data.messageId ?? `${Date.now()}-a`,
+      role: "assistant",
+      content: res.data.answer,
+      grounded: res.data.grounded,
+      model: res.data.model,
+      provider: res.data.provider,
+      sources:
+        res.data.retrievedChunks.length > 0
+          ? fromRetrievedChunks(res.data.retrievedChunks)
+          : undefined,
+    };
+    return { assistantMsg, conversationId: res.data.conversationId };
+  };
+
+  const sendMessage = async () => {
+    const question = input.trim();
+    if (!question || thinking) return;
+
     const userMsg: Message = {
-      id: Date.now().toString(),
+      id: `${Date.now()}-u`,
       role: "user",
-      content: input,
+      content: question,
     };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setThinking(true);
 
-    setTimeout(() => {
-      const grounded = !input.toLowerCase().includes("custom");
-      const aiMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: grounded
-          ? "A successful charge does not automatically activate a subscription. Activation is triggered by the subscription.activated webhook event. If the webhook delivery fails or the handler throws an error, the subscription remains in a pending state despite the payment succeeding."
-          : "I could not find relevant information about this topic in your uploaded knowledge base.",
-        grounded,
-        sources: grounded ? sampleSources : [],
-        model: "GPT-4o",
-        responseTime: "1.2s",
-      };
+    try {
+      const { assistantMsg, conversationId } = await runAsk(question, activeConv);
+      setMessages((prev) => [...prev, assistantMsg]);
+      setActiveConv(conversationId);
+      loadConversations();
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `${Date.now()}-e`,
+          role: "assistant",
+          content:
+            err instanceof Error
+              ? err.message
+              : "The request failed. Please try again.",
+          error: true,
+        },
+      ]);
+    } finally {
       setThinking(false);
-      setMessages((prev) => [...prev, aiMsg]);
-    }, 2000);
+    }
   };
 
-  const handlePrompt = (p: string) => {
-    setInput(p);
+  const regenerate = async (assistantMsgId: string) => {
+    const idx = messages.findIndex((m) => m.id === assistantMsgId);
+    if (idx === -1) return;
+    // Find the most recent user message before this assistant reply.
+    let userContent: string | null = null;
+    for (let i = idx - 1; i >= 0; i--) {
+      if (messages[i].role === "user") {
+        userContent = messages[i].content;
+        break;
+      }
+    }
+    if (!userContent) return;
+
+    setRegeneratingId(assistantMsgId);
+    try {
+      const { assistantMsg, conversationId } = await runAsk(userContent, activeConv);
+      setMessages((prev) =>
+        prev.map((m) => (m.id === assistantMsgId ? { ...assistantMsg, id: assistantMsgId } : m)),
+      );
+      setActiveConv(conversationId);
+      loadConversations();
+    } catch (err) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantMsgId
+            ? {
+                id: assistantMsgId,
+                role: "assistant",
+                content:
+                  err instanceof Error
+                    ? err.message
+                    : "The request failed. Please try again.",
+                error: true,
+              }
+            : m,
+        ),
+      );
+    } finally {
+      setRegeneratingId(null);
+    }
   };
+
+  const handleDeleteConversation = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm("Delete this conversation? This cannot be undone.")) return;
+    try {
+      await deleteChatConversation(id);
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      if (activeConv === id) {
+        setActiveConv(null);
+        setMessages([]);
+      }
+    } catch {
+      // Non-fatal — leave the item in place if the delete failed.
+    }
+  };
+
+  const handlePrompt = (p: string) => setInput(p);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -388,6 +526,16 @@ export function ChatPage() {
       sendMessage();
     }
   };
+
+  const openSourceDrawer = (src: DisplaySource, allSources?: DisplaySource[]) => {
+    setDrawerSources(allSources ?? [src]);
+    setSelectedSource(src);
+    setShowSourceDrawer(true);
+  };
+
+  const filteredConversations = conversations.filter((c) =>
+    c.title.toLowerCase().includes(convSearch.toLowerCase()),
+  );
 
   return (
     <div className="flex h-full bg-[#020617] overflow-hidden">
@@ -397,7 +545,7 @@ export function ChatPage() {
           <Button
             size="sm"
             className="w-full bg-cyan-400/10 text-cyan-400 hover:bg-cyan-400/20 border border-cyan-400/20 text-xs font-medium"
-            onClick={() => setMessages([])}
+            onClick={startNewChat}
           >
             <Plus className="w-3.5 h-3.5 mr-1.5" /> New chat
           </Button>
@@ -406,54 +554,77 @@ export function ChatPage() {
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
             <input
+              value={convSearch}
+              onChange={(e) => setConvSearch(e.target.value)}
               placeholder="Search conversations..."
               className="w-full bg-[#0B1220] border border-[#1E293B] rounded-lg pl-8 pr-3 py-2 text-xs text-slate-400 placeholder-slate-600 focus:outline-none focus:border-[#334155] transition-colors"
             />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto px-2 space-y-0.5">
-          {conversations.map((conv) => (
-            <div
-              key={conv.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => setActiveConv(conv.id)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  setActiveConv(conv.id);
-                }
-              }}
-              className={`w-full text-left px-3 py-2.5 rounded-lg transition-all group cursor-pointer ${activeConv === conv.id ? "bg-cyan-400/10 border border-cyan-400/20 text-cyan-400" : "hover:bg-[#1E293B] text-slate-400"}`}
-            >
-              <div className="flex items-center gap-2 mb-0.5">
-                <MessageSquare className="w-3.5 h-3.5 shrink-0" />
-                <span className="text-xs font-medium truncate flex-1">
-                  {conv.title}
-                </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    // TODO: wire up conversation delete
-                  }}
-                  className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all"
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              </div>
-              <div className="flex items-center gap-2 ml-5 text-[10px] text-slate-600">
-                <Clock className="w-2.5 h-2.5" />
-                {conv.time} · {conv.messages} msgs
-              </div>
+          {convosLoading ? (
+            <div className="flex items-center justify-center py-10 text-slate-600">
+              <Loader2 className="w-4 h-4 animate-spin" />
             </div>
-          ))}
+          ) : convosError ? (
+            <div className="px-3 py-6 text-center">
+              <div className="text-xs text-red-400 mb-2">{convosError}</div>
+              <button
+                onClick={loadConversations}
+                className="text-[10px] text-cyan-400 hover:text-cyan-300"
+              >
+                Retry
+              </button>
+            </div>
+          ) : filteredConversations.length === 0 ? (
+            <div className="px-3 py-6 text-center text-xs text-slate-600">
+              {convSearch ? "No matching conversations." : "No conversations yet."}
+            </div>
+          ) : (
+            filteredConversations.map((conv) => (
+              <div
+                key={conv.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => openConversation(conv.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openConversation(conv.id);
+                  }
+                }}
+                className={`w-full text-left px-3 py-2.5 rounded-lg transition-all group cursor-pointer ${activeConv === conv.id ? "bg-cyan-400/10 border border-cyan-400/20 text-cyan-400" : "hover:bg-[#1E293B] text-slate-400"}`}
+              >
+                <div className="flex items-center gap-2 mb-0.5">
+                  <MessageSquare className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-xs font-medium truncate flex-1">
+                    {conv.title}
+                  </span>
+                  <button
+                    onClick={(e) => handleDeleteConversation(conv.id, e)}
+                    className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+                <div className="flex items-center gap-2 ml-5 text-[10px] text-slate-600">
+                  <Clock className="w-2.5 h-2.5" />
+                  {formatRelativeTime(conv.updatedAt)} · {conv.messagesCount} msgs
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
       {/* Main chat */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <div className="flex-1 overflow-y-auto">
-          {messages.length === 0 ? (
+          {messagesLoading ? (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
+            </div>
+          ) : messages.length === 0 ? (
             /* Empty state */
             <div className="flex flex-col items-center justify-center h-full px-6 py-12 text-center">
               <div className="w-14 h-14 rounded-2xl bg-cyan-400/10 border border-cyan-400/30 flex items-center justify-center mb-5">
@@ -492,10 +663,9 @@ export function ChatPage() {
                   ) : (
                     <AssistantMessage
                       msg={msg}
-                      onCopySource={(src) => {
-                        setSelectedChunkSrc(src);
-                        setShowSourceDrawer(true);
-                      }}
+                      regenerating={regeneratingId === msg.id}
+                      onRegenerate={() => regenerate(msg.id)}
+                      onOpenSource={(src) => openSourceDrawer(src, msg.sources)}
                     />
                   )}
                 </div>
@@ -534,12 +704,6 @@ export function ChatPage() {
             </div>
             <div className="flex items-center gap-3 mt-2 px-1">
               <span className="text-[10px] text-slate-600">
-                GPT-4o via OpenRouter
-              </span>
-              <span className="text-slate-700">·</span>
-              <span className="text-[10px] text-slate-600">All sources</span>
-              <span className="text-slate-700">·</span>
-              <span className="text-[10px] text-slate-600">
                 Press Enter to send, Shift+Enter for new line
               </span>
             </div>
@@ -548,7 +712,7 @@ export function ChatPage() {
       </div>
 
       {/* Source drawer */}
-      {showSourceDrawer && selectedChunkSrc && (
+      {showSourceDrawer && selectedSource && (
         <div className="hidden xl:flex flex-col w-80 border-l border-[#1E293B] bg-[#0F172A]">
           <div className="flex items-center justify-between px-4 py-3 border-b border-[#1E293B]">
             <span className="text-sm font-semibold text-slate-200">
@@ -562,61 +726,70 @@ export function ChatPage() {
             </button>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            <div className="space-y-2">
-              {sampleSources.map((src, i) => (
-                <button
-                  key={i}
-                  onClick={() => setSelectedChunkSrc(src)}
-                  className={`w-full text-left p-3 rounded-xl border transition-colors ${selectedChunkSrc.name === src.name ? "border-cyan-400/30 bg-cyan-400/5" : "border-[#1E293B] hover:border-[#334155]"}`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <FileText className="w-3.5 h-3.5 text-cyan-400" />
-                    <span className="text-xs font-medium text-slate-300">
-                      {src.name}
-                    </span>
-                    <span className="font-mono text-[10px] text-emerald-400 bg-emerald-400/10 px-1.5 rounded ml-auto">
-                      {src.score}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 mb-1">
-                    {src.doc} · {src.chunk}
-                  </div>
-                </button>
-              ))}
-            </div>
+            {drawerSources.length > 1 && (
+              <div className="space-y-2">
+                {drawerSources.map((src) => (
+                  <button
+                    key={src.key}
+                    onClick={() => setSelectedSource(src)}
+                    className={`w-full text-left p-3 rounded-xl border transition-colors ${selectedSource.key === src.key ? "border-cyan-400/30 bg-cyan-400/5" : "border-[#1E293B] hover:border-[#334155]"}`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <FileText className="w-3.5 h-3.5 text-cyan-400" />
+                      <span className="text-xs font-medium text-slate-300">
+                        {src.sourceName}
+                      </span>
+                      <span className="font-mono text-[10px] text-emerald-400 bg-emerald-400/10 px-1.5 rounded ml-auto">
+                        {src.score.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-500 mb-1">
+                      {src.documentTitle} · Chunk {src.chunkIndex}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
 
             <div className="bg-[#0B1220] border border-[#1E293B] rounded-xl p-3">
               <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
                 Full chunk
               </div>
               <p className="text-xs text-slate-400 leading-relaxed font-mono">
-                {selectedChunkSrc.preview}
+                {selectedSource.chunkText ?? "No chunk text available for this source."}
               </p>
-              <div className="flex gap-2 mt-3">
-                <button className="flex items-center gap-1 text-[10px] text-cyan-400 hover:text-cyan-300">
-                  <Copy className="w-3 h-3" /> Copy
-                </button>
-                <button className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300">
-                  <BookOpen className="w-3 h-3" /> Open source
-                </button>
-              </div>
+              {selectedSource.chunkText && (
+                <div className="flex gap-2 mt-3">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard?.writeText(selectedSource.chunkText ?? "").catch(() => {});
+                      setCopiedKey(selectedSource.key);
+                      setTimeout(() => setCopiedKey(null), 1500);
+                    }}
+                    className="flex items-center gap-1 text-[10px] text-cyan-400 hover:text-cyan-300"
+                  >
+                    <Copy className="w-3 h-3" />
+                    {copiedKey === selectedSource.key ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2 text-xs">
               <div className="flex justify-between">
                 <span className="text-slate-500">Source</span>
-                <span className="text-slate-300">{selectedChunkSrc.name}</span>
+                <span className="text-slate-300">{selectedSource.sourceName}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Chunk</span>
                 <span className="font-mono text-slate-400">
-                  {selectedChunkSrc.chunk}
+                  {selectedSource.chunkIndex}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Match score</span>
                 <span className="font-mono text-emerald-400">
-                  {selectedChunkSrc.score}
+                  {selectedSource.score.toFixed(2)}
                 </span>
               </div>
             </div>
