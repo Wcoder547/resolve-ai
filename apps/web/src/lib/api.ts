@@ -74,14 +74,14 @@ async function request<TResponse>(
 }
 
 export function registerUser(payload: RegisterPayload) {
-  return request<RegisterResponse>("/api/auth/register", {
+  return request<RegisterResponse>("/api/v1/auth/register", {
     method: "POST",
     body: JSON.stringify(payload)
   });
 }
 
 export function loginUser(payload: LoginPayload) {
-  return request<LoginResponse>("/api/auth/login", {
+  return request<LoginResponse>("/api/v1/auth/login", {
     method: "POST",
     body: JSON.stringify(payload)
   });
@@ -94,7 +94,7 @@ export function getCurrentUser() {
     throw new Error("No access token found.");
   }
 
-  return request<MeResponse>("/api/auth/me", {
+  return request<MeResponse>("/api/v1/auth/me", {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`
@@ -112,7 +112,7 @@ export function logoutUser() {
     });
   }
 
-  return request<{ success: boolean; message: string }>("/api/auth/logout", {
+  return request<{ success: boolean; message: string }>("/api/v1/auth/logout", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`
@@ -128,7 +128,7 @@ export function getCurrentOrganization() {
     throw new Error("No access token found.");
   }
 
-  return request<CurrentOrganizationResponse>("/api/organizations/current", {
+  return request<CurrentOrganizationResponse>("/api/v1/organizations/current", {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`
@@ -143,7 +143,7 @@ export function getOrganizationMembers() {
     throw new Error("No access token found.");
   }
 
-  return request<OrganizationMembersResponse>("/api/organizations/members", {
+  return request<OrganizationMembersResponse>("/api/v1/organizations/members", {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`
@@ -167,7 +167,7 @@ export async function uploadKnowledgeFile(file: File, name?: string) {
     formData.append("name", name.trim());
   }
 
-  const response = await fetch(`${API_URL}/api/knowledge/upload`, {
+  const response = await fetch(`${API_URL}/api/v1/knowledge/upload`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`
@@ -184,6 +184,10 @@ export async function uploadKnowledgeFile(file: File, name?: string) {
   return data as UploadKnowledgeResponse;
 }
 
+// NOTE: knowledge.routes.ts mounts these directly under /api/v1/knowledge
+// with no "/sources" segment (router.get("/"), router.get("/:sourceId"),
+// etc.) — these four calls previously pointed at "/knowledge/sources..."
+// which doesn't exist on the router and would 404.
 export function listKnowledgeSources() {
   const token = getAccessToken();
 
@@ -191,7 +195,7 @@ export function listKnowledgeSources() {
     throw new Error("No access token found.");
   }
 
-  return request<ListKnowledgeSourcesResponse>("/api/knowledge/sources", {
+  return request<ListKnowledgeSourcesResponse>("/api/v1/knowledge/", {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`
@@ -207,7 +211,7 @@ export function getKnowledgeSource(sourceId: string) {
   }
 
   return request<GetKnowledgeSourceResponse>(
-    `/api/knowledge/sources/${sourceId}`,
+    `/api/v1/knowledge/${sourceId}`,
     {
       method: "GET",
       headers: {
@@ -225,7 +229,7 @@ export function ingestKnowledgeSource(sourceId: string) {
   }
 
   return request<IngestKnowledgeSourceResponse>(
-    `/api/knowledge/sources/${sourceId}/ingest`,
+    `/api/v1/knowledge/${sourceId}/ingest`,
     {
       method: "POST",
       headers: {
@@ -243,7 +247,7 @@ export function deleteKnowledgeSource(sourceId: string) {
   }
 
   return request<DeleteKnowledgeSourceResponse>(
-    `/api/knowledge/sources/${sourceId}`,
+    `/api/v1/knowledge/${sourceId}`,
     {
       method: "DELETE",
       headers: {
@@ -261,7 +265,7 @@ export function searchKnowledge(query: string, limit = 5) {
     throw new Error("No access token found.");
   }
 
-  return request<SearchKnowledgeResponse>("/api/knowledge/search", {
+  return request<SearchKnowledgeResponse>("/api/v1/knowledge/search", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`
@@ -285,7 +289,7 @@ export function askChatQuestion(
     throw new Error("No access token found.");
   }
 
-  return request<AskChatResponse>("/api/chat/ask", {
+  return request<AskChatResponse>("/api/v1/chat/ask", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`
@@ -306,7 +310,7 @@ export function listChatConversations() {
     throw new Error("No access token found.");
   }
 
-  return request<ListChatConversationsResponse>("/api/chat/conversations", {
+  return request<ListChatConversationsResponse>("/api/v1/chat/conversations", {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`
@@ -322,7 +326,7 @@ export function getChatConversation(conversationId: string) {
   }
 
   return request<GetChatConversationResponse>(
-    `/api/chat/conversations/${conversationId}`,
+    `/api/v1/chat/conversations/${conversationId}`,
     {
       method: "GET",
       headers: {
@@ -340,7 +344,7 @@ export function deleteChatConversation(conversationId: string) {
   }
 
   return request<DeleteChatConversationResponse>(
-    `/api/chat/conversations/${conversationId}`,
+    `/api/v1/chat/conversations/${conversationId}`,
     {
       method: "DELETE",
       headers: {
@@ -375,7 +379,7 @@ export function listAgentRuns(params: ListAgentRunsParams = {}) {
   const qs = search.toString();
 
   return request<ListAgentRunsResponse>(
-    `/api/chat/agent/runs${qs ? `?${qs}` : ""}`,
+    `/api/v1/chat/agent/runs${qs ? `?${qs}` : ""}`,
     {
       method: "GET",
       headers: {
@@ -392,7 +396,7 @@ export function getAgentRunsSummary() {
     throw new Error("No access token found.");
   }
 
-  return request<AgentRunsSummaryResponse>("/api/chat/agent/runs/summary", {
+  return request<AgentRunsSummaryResponse>("/api/v1/chat/agent/runs/summary", {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`
@@ -408,7 +412,7 @@ export function getAgentRunDetail(agentRunId: string) {
   }
 
   return request<AgentRunDetailResponse>(
-    `/api/chat/agent/runs/${agentRunId}`,
+    `/api/v1/chat/agent/runs/${agentRunId}`,
     {
       method: "GET",
       headers: {
@@ -426,7 +430,7 @@ export function getAgentRunTimeline(agentRunId: string) {
   }
 
   return request<AgentRunTimelineResponse>(
-    `/api/chat/agent/runs/${agentRunId}/timeline`,
+    `/api/v1/chat/agent/runs/${agentRunId}/timeline`,
     {
       method: "GET",
       headers: {
@@ -444,7 +448,7 @@ export function listPendingToolCalls() {
   }
 
   return request<PendingToolCallsResponse>(
-    "/api/chat/agent/tool-calls/pending",
+    "/api/v1/chat/agent/tool-calls/pending",
     {
       method: "GET",
       headers: {
@@ -462,7 +466,7 @@ export function approveToolCall(toolCallId: string) {
   }
 
   return request<ApproveToolCallResponse>(
-    `/api/chat/agent/tool-calls/${toolCallId}/approve`,
+    `/api/v1/chat/agent/tool-calls/${toolCallId}/approve`,
     {
       method: "POST",
       headers: {
@@ -480,7 +484,7 @@ export function rejectToolCall(toolCallId: string, reason?: string) {
   }
 
   return request<RejectToolCallResponse>(
-    `/api/chat/agent/tool-calls/${toolCallId}/reject`,
+    `/api/v1/chat/agent/tool-calls/${toolCallId}/reject`,
     {
       method: "POST",
       headers: {

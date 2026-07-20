@@ -19,7 +19,10 @@ import {
   Loader2,
   BookOpen,
   Clock,
+  Link2,
 } from "lucide-react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Button } from "../ui/button";
 import {
   askChatQuestion,
@@ -29,6 +32,92 @@ import {
 } from "@/lib/api";
 import type { ChatConversationSummary } from "@/types/chat";
 import { formatRelativeTime } from "@/lib/format";
+
+// The model returns its answer as markdown with a fairly consistent section
+// structure (Direct Answer / Recommended Steps / Sources Used / Confidence).
+// The UI already has its own sources panel and doesn't want a "Direct
+// Answer" label or a confidence readout, so this strips/unwraps those
+// sections before rendering rather than showing the model's raw markdown.
+function cleanAnswerMarkdown(raw: string): string {
+  const lines = raw.split("\n");
+  const sections: { heading: string | null; body: string[] }[] = [
+    { heading: null, body: [] },
+  ];
+
+  for (const line of lines) {
+    const headingMatch = line.match(/^#{1,4}\s+(.*)$/);
+    if (headingMatch) {
+      sections.push({ heading: headingMatch[1].trim(), body: [] });
+    } else {
+      sections[sections.length - 1].body.push(line);
+    }
+  }
+
+  const DROP_HEADINGS = ["confidence", "sources used", "sources"];
+  const UNWRAP_HEADINGS = ["direct answer", "answer"];
+
+  const kept = sections
+    .filter((s) => {
+      if (s.heading == null) return true;
+      const h = s.heading.toLowerCase();
+      return !DROP_HEADINGS.some((d) => h.startsWith(d));
+    })
+    .map((s) => {
+      if (s.heading == null) return s.body.join("\n");
+      const h = s.heading.toLowerCase();
+      if (UNWRAP_HEADINGS.some((u) => h === u)) {
+        return s.body.join("\n");
+      }
+      return `## ${s.heading}\n${s.body.join("\n")}`;
+    });
+
+  return kept.join("\n").trim();
+}
+
+const markdownComponents: Components = {
+  h1: ({ node, ...props }) => (
+    <h3 className="text-sm font-semibold text-slate-200 mt-3 mb-1.5 first:mt-0" {...props} />
+  ),
+  h2: ({ node, ...props }) => (
+    <h3 className="text-sm font-semibold text-slate-200 mt-3 mb-1.5 first:mt-0" {...props} />
+  ),
+  h3: ({ node, ...props }) => (
+    <h4 className="text-sm font-semibold text-slate-300 mt-3 mb-1 first:mt-0" {...props} />
+  ),
+  p: ({ node, ...props }) => (
+    <p className="text-sm text-slate-300 leading-relaxed mb-2 last:mb-0" {...props} />
+  ),
+  ul: ({ node, ...props }) => (
+    <ul className="list-disc list-outside ml-4 space-y-1 mb-2 text-sm text-slate-300" {...props} />
+  ),
+  ol: ({ node, ...props }) => (
+    <ol className="list-decimal list-outside ml-4 space-y-1 mb-2 text-sm text-slate-300" {...props} />
+  ),
+  li: ({ node, ...props }) => (
+    <li className="text-sm text-slate-300 leading-relaxed" {...props} />
+  ),
+  strong: ({ node, ...props }) => (
+    <strong className="font-semibold text-slate-100" {...props} />
+  ),
+  em: ({ node, ...props }) => <em className="italic text-slate-300" {...props} />,
+  a: ({ node, ...props }) => (
+    <a
+      className="text-cyan-400 hover:text-cyan-300 underline underline-offset-2"
+      target="_blank"
+      rel="noreferrer"
+      {...props}
+    />
+  ),
+  code: ({ node, ...props }) => (
+    <code
+      className="bg-[#0B1220] border border-[#1E293B] rounded px-1 py-0.5 text-[11px] font-mono text-cyan-300"
+      {...props}
+    />
+  ),
+  blockquote: ({ node, ...props }) => (
+    <blockquote className="border-l-2 border-[#334155] pl-3 text-sm text-slate-400 italic mb-2" {...props} />
+  ),
+};
 
 // ---- Local display types --------------------------------------------------
 // Loaded (historical) messages only carry `ChatSource` (citation metadata,
@@ -77,6 +166,8 @@ function AssistantMessage({
 }) {
   const [expandedSrc, setExpandedSrc] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showSources, setShowSources] = useState(false);
+  const cleanedContent = cleanAnswerMarkdown(msg.content);
 
   const handleCopy = () => {
     navigator.clipboard?.writeText(msg.content).catch(() => {});
@@ -118,42 +209,18 @@ function AssistantMessage({
           <Zap className="w-3 h-3 text-cyan-400" />
         </div>
         <span className="text-xs font-semibold text-slate-300">ResolveAI</span>
-        <span
-          className={`text-[10px] px-2 py-0.5 rounded-full font-medium border flex items-center gap-1
-          ${msg.grounded ? "bg-emerald-400/10 text-emerald-400 border-emerald-400/20" : "bg-red-400/10 text-red-400 border-red-400/20"}`}
-        >
-          {msg.grounded ? (
-            <CheckCircle className="w-2.5 h-2.5" />
-          ) : (
-            <AlertCircle className="w-2.5 h-2.5" />
-          )}
-          {msg.grounded ? "Grounded" : "Not grounded"}
-        </span>
-        {msg.model && (
-          <span className="text-[10px] font-mono text-slate-600">
-            {msg.model}
-          </span>
-        )}
-        {msg.sources && msg.sources.length > 0 && (
-          <span className="text-[10px] text-slate-600">
-            {msg.sources.length} sources
-          </span>
-        )}
       </div>
 
       {/* Answer body */}
       <div className="ml-8 space-y-4">
         <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-4">
-          <div className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wider mb-2">
-            Direct Answer
-          </div>
-          <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
-            {msg.content}
-          </p>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            {cleanedContent}
+          </ReactMarkdown>
         </div>
 
-        {/* Sources */}
-        {msg.sources && msg.sources.length > 0 && (
+        {/* Sources — collapsed by default, opened via the "Sources" action below */}
+        {showSources && msg.sources && msg.sources.length > 0 && (
           <div>
             <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
               Sources Used
@@ -255,6 +322,15 @@ function AssistantMessage({
             )}
             {copied ? "Copied!" : "Copy answer"}
           </button>
+          {msg.sources && msg.sources.length > 0 && (
+            <button
+              onClick={() => setShowSources((v) => !v)}
+              className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              <Link2 className="w-3.5 h-3.5" />
+              {showSources ? "Hide sources" : `Sources (${msg.sources.length})`}
+            </button>
+          )}
           <button
             onClick={onRegenerate}
             disabled={regenerating}
