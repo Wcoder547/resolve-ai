@@ -25,7 +25,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "../ui/button";
 import {
-  askChatQuestion,
+  askAgenticChatQuestion,
   listChatConversations,
   getChatConversation,
   deleteChatConversation,
@@ -485,14 +485,17 @@ export function ChatPage() {
   };
 
   const runAsk = async (question: string, conversationId: string | null) => {
-    const res = await askChatQuestion(question, conversationId ?? undefined);
+    // Uses the agentic endpoint (not the plain /chat/ask) so this actually
+    // creates an AgentRun record — otherwise the Agent Runs and Approvals
+    // pages never see any data from chat activity.
+    const res = await askAgenticChatQuestion(question, conversationId ?? undefined);
     const assistantMsg: Message = {
       id: res.data.messageId ?? `${Date.now()}-a`,
       role: "assistant",
       content: res.data.answer,
       grounded: res.data.grounded,
-      model: res.data.model,
-      provider: res.data.provider,
+      model: res.data.agentRun.model,
+      provider: res.data.agentRun.provider,
       sources:
         res.data.retrievedChunks.length > 0
           ? fromRetrievedChunks(res.data.retrievedChunks)

@@ -44,6 +44,38 @@ export type AskChatResponse = {
   };
 };
 
+// Response from POST /chat/agent/ask — the agentic version of /chat/ask.
+// Same request payload, but this is the endpoint that actually records an
+// AgentRun (with steps/tool calls) that shows up on the Agent Runs and
+// Approvals pages. /chat/ask never writes that record.
+export type AskAgenticChatResponse = {
+  success: boolean;
+  message: string;
+  data: {
+    conversationId: string;
+    messageId?: string;
+    answer: string;
+    sources: ChatSource[];
+    retrievedChunks: RetrievedChunk[];
+    grounded: boolean;
+    confidence?: string | null;
+    needsEscalation: boolean;
+    escalationReason?: string | null;
+    agentRun: {
+      id: string;
+      externalRunId?: string | null;
+      status: string;
+      agentsUsed?: string[];
+      steps: import("./agentic").AgentStep[];
+      toolCalls: import("./agentic").AgentToolCall[];
+      provider: string | null;
+      model: string | null;
+      promptVersion?: string | null;
+      fallbackUsed: boolean;
+    };
+  };
+};
+
 export type ChatMessage = {
   id: string;
   role: "USER" | "ASSISTANT";

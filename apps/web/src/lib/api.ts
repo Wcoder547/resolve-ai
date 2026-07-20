@@ -19,6 +19,7 @@ import type {
 
 import type {
   AskChatResponse,
+  AskAgenticChatResponse,
   DeleteChatConversationResponse,
   GetChatConversationResponse,
   ListChatConversationsResponse
@@ -290,6 +291,33 @@ export function askChatQuestion(
   }
 
   return request<AskChatResponse>("/api/v1/chat/ask", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      question,
+      conversationId: conversationId || undefined,
+      limit
+    })
+  });
+}
+
+// Same payload as askChatQuestion, but hits the agentic endpoint — this is
+// the one that actually creates an AgentRun record (steps, tool calls,
+// approval gating), which is what powers the Agent Runs and Approvals pages.
+export function askAgenticChatQuestion(
+  question: string,
+  conversationId?: string | null,
+  limit = 5
+) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<AskAgenticChatResponse>("/api/v1/chat/agent/ask", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`
