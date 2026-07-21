@@ -44,6 +44,11 @@ import type {
   RejectToolCallResponse
 } from "@/types/agentic";
 
+import type {
+  AiUsageSummaryResponse,
+  ListAiUsageEventsResponse
+} from "@/types/usage";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 if (!API_URL) {
@@ -636,6 +641,39 @@ export function deleteIntegration(integrationId: string) {
     `/api/v1/integrations/${integrationId}`,
     {
       method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
+}
+
+export function getAiUsageSummary() {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<AiUsageSummaryResponse>("/api/v1/usage/ai/summary", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+}
+
+export function listAiUsageEvents(limit = 20) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<ListAiUsageEventsResponse>(
+    `/api/v1/usage/ai/events?limit=${limit}`,
+    {
+      method: "GET",
       headers: {
         Authorization: `Bearer ${token}`
       }

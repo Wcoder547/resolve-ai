@@ -17,6 +17,8 @@ import {
   createIntegration,
   updateIntegrationStatus,
   deleteIntegration,
+  getAiUsageSummary,
+  listAiUsageEvents,
   RateLimitError,
 } from "@/lib/api";
 import type { AuthOrganization } from "@/types/auth";
@@ -25,6 +27,7 @@ import type {
   IntegrationProvider,
   IntegrationStatus,
 } from "@/types/integrations";
+import type { AiUsageSummary, AiUsageEvent } from "@/types/usage";
 import { formatRelativeTime } from "@/lib/format";
 
 type Section =
@@ -717,6 +720,152 @@ function IntegrationsSection() {
   );
 }
 
+function UsageSection() {
+  const [summary, setSummary] = useState<AiUsageSummary | null>(null);
+  const [events, setEvents] = useState<AiUsageEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [summaryRes, eventsRes] = await Promise.all([
+        getAiUsageSummary(),
+        listAiUsageEvents(10),
+      ]);
+      setSummary(summaryRes.data);
+      setEvents(eventsRes.data.events);
+    } catch (err) {
+      setError(
+        err instanceof RateLimitError
+          ? `Rate limited, retry in ${err.retryAfterSeconds}s.`
+          : "Couldn't load usage data."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="w-5 h-5 text-slate-600 animate-spin" />
+      </div>
+    );
+  }
+
+  if (error || !summary) {
+    return (
+      <div className="py-16 text-center">
+        <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-3" />
+        <div className="text-sm text-red-400 mb-3">{error || "Something went wrong."}</div>
+        <Button size="sm" className="bg-cyan-400/10 text-cyan-400 hover:bg-cyan-400/20 text-xs" onClick={load}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  const dailyRequestPct = summary.daily.limits.requestLimit > 0
+    ? Math.min(100, (summary.daily.requestCount / summary.daily.limits.requestLimit) * 100)
+    : 0;
+  const dailyTokenPct = summary.daily.limits.tokenLimit > 0
+    ? Math.min(100, (summary.daily.totalTokens / summary.daily.limits.tokenLimit) * 100)
+    : 0;
+  const monthlyTokenPct = summary.monthly.limits.tokenLimit > 0
+    ? Math.min(100, (summary.monthly.totalTokens / summary.monthly.limits.tokenLimit) * 100)
+    : 0;
+
+  const barColor = (pct: number) => pct >= 90 ? "bg-red-400" : pct >= 70 ? "bg-yellow-400" : "bg-cyan-400";
+
+  return (
+    <div className="max-w-lg space-y-4">
+      <NotWiredBanner>
+        Usage numbers below are real, metered from actual AI calls. There&apos;s no subscription/plan model on the
+        backend yet, so plan tier, price, and upgrade actions aren&apos;t real.
+      </NotWiredBanner>
+
+      <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-semibold text-slate-200">Today</div>
+          <div className="text-xs text-slate-500 font-mono">${summary.daily.estimatedCostUsd.toFixed(4)} est.</div>
+        </div>
+        <div>
+          <div className="flex justify-between text-xs mb-1">
+            <span className="text-slate-400">Requests</span>
+            <span className="font-mono text-slate-300">
+              {summary.daily.requestCount} / {summary.daily.limits.requestLimit}
+            </span>
+          </div>
+          <div className="w-full bg-[#1E293B] rounded-full h-1.5">
+            <div className={`h-1.5 rounded-full ${barColor(dailyRequestPct)}`} style={{ width: `${dailyRequestPct}%` }} />
+          </div>
+        </div>
+        <div>
+          <div className="flex justify-between text-xs mb-1">
+            <span className="text-slate-400">Tokens</span>
+            <span className="font-mono text-slate-300">
+              {summary.daily.totalTokens.toLocaleString()} / {summary.daily.limits.tokenLimit.toLocaleString()}
+            </span>
+          </div>
+          <div className="w-full bg-[#1E293B] rounded-full h-1.5">
+            <div className={`h-1.5 rounded-full ${barColor(dailyTokenPct)}`} style={{ width: `${dailyTokenPct}%` }} />
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-semibold text-slate-200">This month</div>
+          <div className="text-xs text-slate-500 font-mono">${summary.monthly.estimatedCostUsd.toFixed(4)} est.</div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 text-xs text-slate-400">
+          <div>Requests <div className="font-mono text-slate-200 text-sm">{summary.monthly.requestCount}</div></div>
+          <div>Prompt tokens <div className="font-mono text-slate-200 text-sm">{summary.monthly.promptTokens.toLocaleString()}</div></div>
+          <div>Completion tokens <div className="font-mono text-slate-200 text-sm">{summary.monthly.completionTokens.toLocaleString()}</div></div>
+          <div>Total tokens <div className="font-mono text-slate-200 text-sm">{summary.monthly.totalTokens.toLocaleString()}</div></div>
+        </div>
+        <div>
+          <div className="flex justify-between text-xs mb-1">
+            <span className="text-slate-400">Monthly token limit</span>
+            <span className="font-mono text-slate-300">{monthlyTokenPct.toFixed(0)}%</span>
+          </div>
+          <div className="w-full bg-[#1E293B] rounded-full h-1.5">
+            <div className={`h-1.5 rounded-full ${barColor(monthlyTokenPct)}`} style={{ width: `${monthlyTokenPct}%` }} />
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-[#1E293B] text-sm font-semibold text-slate-200">
+          Recent AI calls
+        </div>
+        {events.length === 0 ? (
+          <div className="py-8 text-center text-xs text-slate-500">No AI usage recorded yet.</div>
+        ) : (
+          <div className="divide-y divide-[#1E293B]">
+            {events.map((e) => (
+              <div key={e.id} className="px-4 py-2.5 flex items-center justify-between text-xs">
+                <div className="min-w-0">
+                  <div className="text-slate-300 font-mono">{e.operation}</div>
+                  <div className="text-slate-600">{e.provider}/{e.model}</div>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <div className="text-slate-400 font-mono">{e.totalTokens.toLocaleString()} tok</div>
+                  <div className="text-slate-600">{formatRelativeTime(e.createdAt)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AuditSection() {
   return (
     <div className="space-y-4">
@@ -864,31 +1013,7 @@ export function SettingsPage() {
         </div>
       </div>
     ),
-    billing: (
-      <div className="max-w-lg space-y-4">
-        <NotWiredBanner>
-          Demo data — there&apos;s no billing/usage model or routes on the backend yet, so plan, usage, and upgrade actions here aren&apos;t real.
-        </NotWiredBanner>
-        <div className="bg-[#0F172A] border border-cyan-400/20 rounded-xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <div className="text-sm font-semibold text-slate-200">Pro plan</div>
-              <div className="text-xs text-slate-500">$49 / month · billed monthly</div>
-            </div>
-            <span className="text-[10px] bg-cyan-400/10 text-cyan-400 border border-cyan-400/20 px-2 py-0.5 rounded-full font-medium">Active</span>
-          </div>
-          <div className="space-y-1.5 text-xs text-slate-400">
-            <div className="flex justify-between"><span>Knowledge sources</span><span className="text-slate-300">24 / unlimited</span></div>
-            <div className="flex justify-between"><span>AI conversations</span><span className="text-slate-300">312 / 1,000</span></div>
-            <div className="flex justify-between"><span>Team members</span><span className="text-slate-300">5 / 20</span></div>
-          </div>
-          <div className="flex gap-2 mt-4">
-            <Button size="sm" className="bg-cyan-400 text-slate-950 hover:bg-cyan-300 font-semibold text-xs">Upgrade</Button>
-            <Button variant="outline" size="sm" className="border-[#334155] text-slate-400 hover:text-slate-200 hover:bg-[#1E293B] bg-transparent text-xs">Manage billing</Button>
-          </div>
-        </div>
-      </div>
-    ),
+    billing: <UsageSection />,
     security: <SecuritySection />,
     audit: <AuditSection />,
   };

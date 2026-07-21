@@ -9,7 +9,6 @@ import {
   ChevronRight, Loader2
 } from "lucide-react";
 import { Button } from "../ui/button";
-import { Badge } from "../ui/badge";
 import { Avatar, AvatarFallback } from "../ui/avatar";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -358,7 +357,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* Main content */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Top header */}
-          <header className="h-14 flex items-center gap-4 px-4 lg:px-6 border-b border-[#1E293B] bg-[#020617] flex-shrink-0">
+          <header className="h-14 flex items-center gap-4 px-4 lg:px-6 border-b border-[#1E293B] bg-[#020617] shrink-0">
             <button
               onClick={() => setMobileSidebarOpen(true)}
               className="lg:hidden text-slate-500 hover:text-slate-300 transition-colors"
