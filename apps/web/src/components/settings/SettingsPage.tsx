@@ -1,13 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Building, Users, Zap, GitBranch, Bell, CreditCard, Shield,
-  ClipboardList, ChevronRight, Plus, Trash2, Eye, EyeOff,
-  CheckCircle, AlertTriangle, X, Copy, RefreshCw, ExternalLink,
-  User, Mail, Clock, MoreHorizontal, Globe, Hash, Link2
+  ClipboardList, Plus, Trash2, Eye, EyeOff,
+  AlertTriangle, X, RefreshCw,
+  MoreHorizontal, Globe, Hash, Link2, Loader2,
+  AlertCircle, Lock,
+  type LucideIcon
 } from "lucide-react";
 import { Button } from "../ui/button";
+import {
+  getCurrentOrganization,
+  getOrganizationMembers,
+  listIntegrations,
+  createIntegration,
+  updateIntegrationStatus,
+  deleteIntegration,
+  RateLimitError,
+} from "@/lib/api";
+import type { AuthOrganization } from "@/types/auth";
+import type {
+  Integration,
+  IntegrationProvider,
+  IntegrationStatus,
+} from "@/types/integrations";
+import { formatRelativeTime } from "@/lib/format";
 
 type Section =
   | "organization"
@@ -30,21 +48,32 @@ const navItems: { id: Section; label: string; icon: React.FC<any> }[] = [
   { id: "audit", label: "Audit log", icon: ClipboardList },
 ];
 
-const members = [
-  { name: "Jane Doe", email: "jane@acme.io", role: "Owner", status: "Active", lastActive: "Now" },
-  { name: "Tom Kim", email: "tom@acme.io", role: "Admin", status: "Active", lastActive: "2h ago" },
-  { name: "Priya Rajan", email: "priya@acme.io", role: "Support Agent", status: "Active", lastActive: "5h ago" },
-  { name: "Marcus Webb", email: "marcus@acme.io", role: "Developer", status: "Active", lastActive: "1d ago" },
-  { name: "Lena Fischer", email: "lena@acme.io", role: "Viewer", status: "Invited", lastActive: "—" },
-];
-
 const roleColors: Record<string, string> = {
-  Owner: "bg-violet-400/10 text-violet-400 border-violet-400/20",
-  Admin: "bg-blue-400/10 text-blue-400 border-blue-400/20",
-  "Support Agent": "bg-cyan-400/10 text-cyan-400 border-cyan-400/20",
-  Developer: "bg-emerald-400/10 text-emerald-400 border-emerald-400/20",
-  Viewer: "bg-slate-400/10 text-slate-400 border-slate-400/20",
+  OWNER: "bg-violet-400/10 text-violet-400 border-violet-400/20",
+  ADMIN: "bg-blue-400/10 text-blue-400 border-blue-400/20",
+  SUPPORT_AGENT: "bg-cyan-400/10 text-cyan-400 border-cyan-400/20",
+  DEVELOPER: "bg-emerald-400/10 text-emerald-400 border-emerald-400/20",
+  VIEWER: "bg-slate-400/10 text-slate-400 border-slate-400/20",
 };
+
+function roleLabel(role: string): string {
+  return role
+    .toLowerCase()
+    .split("_")
+    .map(w => w[0]?.toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+// Small banner used on sections that don't have a backend to wire to yet,
+// so it's obvious to anyone poking around which parts of Settings are real.
+function NotWiredBanner({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-2 bg-slate-400/5 border border-slate-400/20 rounded-xl p-3 mb-4">
+      <Lock className="w-3.5 h-3.5 text-slate-500 flex-shrink-0 mt-0.5" />
+      <p className="text-xs text-slate-500">{children}</p>
+    </div>
+  );
+}
 
 const auditLogs = [
   { actor: "Jane Doe", action: "Approved action", resource: "APR-288", time: "35m ago", ip: "192.168.1.14" },
@@ -152,75 +181,85 @@ function ProviderCard({
   );
 }
 
-function IntegrationCard({
-  name,
-  description,
-  icon: Icon,
-  connected,
-  comingSoon,
-}: {
-  name: string;
-  description: string;
-  icon: React.FC<any>;
-  connected?: boolean;
-  comingSoon?: boolean;
-}) {
-  return (
-    <div className={`bg-[#0F172A] border rounded-xl p-4 flex items-start gap-4 ${connected ? "border-emerald-400/20" : "border-[#1E293B]"} ${comingSoon ? "opacity-60" : ""}`}>
-      <div className="w-9 h-9 rounded-xl bg-[#1E293B] border border-[#334155] flex items-center justify-center flex-shrink-0">
-        <Icon className="w-5 h-5 text-slate-400" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5">
-          <span className="text-sm font-medium text-slate-200">{name}</span>
-          {connected && <span className="text-[10px] text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded-full border border-emerald-400/20">Connected</span>}
-          {comingSoon && <span className="text-[10px] text-slate-500 bg-slate-500/10 px-1.5 py-0.5 rounded-full border border-slate-500/20">Coming soon</span>}
-        </div>
-        <p className="text-xs text-slate-500">{description}</p>
-      </div>
-      {!comingSoon && (
-        <Button size="sm" variant="outline" className="border-[#334155] text-slate-400 hover:text-slate-200 hover:bg-[#1E293B] bg-transparent text-xs flex-shrink-0">
-          {connected ? "Configure" : "Connect"}
-        </Button>
-      )}
-    </div>
-  );
-}
-
 function OrganizationSection() {
-  const [saved, setSaved] = useState(false);
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
+  const [org, setOrg] = useState<(AuthOrganization & { plan: string; createdAt: string }) | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const res = await getCurrentOrganization();
+        if (!cancelled) setOrg(res.data.organization);
+      } catch (err) {
+        if (cancelled) return;
+        setError(
+          err instanceof RateLimitError
+            ? `Rate limited, retry in ${err.retryAfterSeconds}s.`
+            : "Couldn't load organization details."
+        );
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="w-5 h-5 text-slate-600 animate-spin" />
+      </div>
+    );
+  }
+
+  if (error || !org) {
+    return (
+      <div className="py-16 text-center">
+        <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-3" />
+        <div className="text-sm text-red-400">{error || "No organization found."}</div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-xl space-y-5">
-      <div>
-        <label className="block text-sm font-medium text-slate-300 mb-1.5">Organization name</label>
-        <input defaultValue="Acme Corp" className="w-full bg-[#0B1220] border border-[#334155] rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/20 transition-colors" />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-slate-300 mb-1.5">Workspace URL</label>
-        <div className="flex items-center">
-          <span className="bg-[#1E293B] border border-r-0 border-[#334155] rounded-l-xl px-3 py-2.5 text-sm text-slate-500 whitespace-nowrap">app.resolveai.io/</span>
-          <input defaultValue="acme-corp" className="flex-1 bg-[#0B1220] border border-[#334155] rounded-r-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-cyan-400 transition-colors" />
+      <NotWiredBanner>
+        This section is read-only — there&apos;s no update/transfer/delete endpoint on the backend yet, so nothing here is editable.
+      </NotWiredBanner>
+
+      <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-5 space-y-4">
+        <div>
+          <div className="text-xs text-slate-500 mb-1">Organization name</div>
+          <div className="text-sm text-slate-200 font-medium">{org.name}</div>
+        </div>
+        <div>
+          <div className="text-xs text-slate-500 mb-1">Workspace URL</div>
+          <div className="text-sm text-slate-300 font-mono">app.resolveai.io/{org.slug}</div>
+        </div>
+        <div className="flex gap-8">
+          <div>
+            <div className="text-xs text-slate-500 mb-1">Plan</div>
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-cyan-400/10 text-cyan-400 border border-cyan-400/20">{org.plan}</span>
+          </div>
+          <div>
+            <div className="text-xs text-slate-500 mb-1">Your role</div>
+            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${roleColors[org.role ?? ""] ?? roleColors.VIEWER}`}>
+              {roleLabel(org.role ?? "VIEWER")}
+            </span>
+          </div>
+          <div>
+            <div className="text-xs text-slate-500 mb-1">Created</div>
+            <div className="text-sm text-slate-300">{formatRelativeTime(org.createdAt)}</div>
+          </div>
         </div>
       </div>
-      <div>
-        <label className="block text-sm font-medium text-slate-300 mb-1.5">Time zone</label>
-        <select className="w-full bg-[#0B1220] border border-[#334155] rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-cyan-400 transition-colors">
-          <option>UTC (Coordinated Universal Time)</option>
-          <option>America/New_York</option>
-          <option>Europe/London</option>
-          <option>Asia/Tokyo</option>
-        </select>
-      </div>
-      <Button onClick={handleSave} className={`${saved ? "bg-emerald-500 hover:bg-emerald-400" : "bg-cyan-400 hover:bg-cyan-300"} text-slate-950 font-semibold text-sm transition-colors`}>
-        {saved ? <><CheckCircle className="w-4 h-4 mr-2" />Saved</> : "Save changes"}
-      </Button>
 
-      {/* Danger zone */}
-      <div className="border border-red-400/20 rounded-xl p-4 mt-8">
+      {/* Danger zone — visibly present but disabled, no backend route exists */}
+      <div className="border border-red-400/20 rounded-xl p-4 mt-8 opacity-60">
         <div className="text-sm font-semibold text-red-400 mb-3">Danger zone</div>
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -228,14 +267,14 @@ function OrganizationSection() {
               <div className="text-sm text-slate-300">Transfer ownership</div>
               <div className="text-xs text-slate-500">Transfer this workspace to another owner</div>
             </div>
-            <Button variant="outline" size="sm" className="border-red-400/30 text-red-400 hover:bg-red-400/10 bg-transparent text-xs">Transfer</Button>
+            <Button disabled variant="outline" size="sm" className="border-red-400/30 text-red-400 bg-transparent text-xs cursor-not-allowed">Transfer</Button>
           </div>
           <div className="border-t border-[#1E293B] pt-3 flex items-center justify-between">
             <div>
               <div className="text-sm text-slate-300">Delete workspace</div>
               <div className="text-xs text-slate-500">Permanently delete this workspace and all data</div>
             </div>
-            <Button variant="outline" size="sm" className="border-red-400/30 text-red-400 hover:bg-red-400/10 bg-transparent text-xs">Delete</Button>
+            <Button disabled variant="outline" size="sm" className="border-red-400/30 text-red-400 bg-transparent text-xs cursor-not-allowed">Delete</Button>
           </div>
         </div>
       </div>
@@ -243,57 +282,102 @@ function OrganizationSection() {
   );
 }
 
+type Member = {
+  id: string;
+  role: string;
+  joinedAt: string;
+  user: { id: string; name: string; email: string };
+};
+
 function MembersSection() {
+  const [members, setMembers] = useState<Member[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await getOrganizationMembers();
+      setMembers(res.data.members);
+    } catch (err) {
+      setError(
+        err instanceof RateLimitError
+          ? `Rate limited, retry in ${err.retryAfterSeconds}s.`
+          : "Couldn't load members."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div className="text-sm text-slate-400">{members.length} members</div>
-        <Button size="sm" className="bg-cyan-400 text-slate-950 hover:bg-cyan-300 font-semibold text-xs">
+        <div className="text-sm text-slate-400">{loading ? "Loading…" : `${members.length} members`}</div>
+        <Button
+          disabled
+          title="Invite flow isn't available yet — there's no invite endpoint on the backend."
+          size="sm"
+          className="bg-cyan-400/40 text-slate-950/70 font-semibold text-xs cursor-not-allowed"
+        >
           <Plus className="w-3.5 h-3.5 mr-1.5" /> Invite member
         </Button>
       </div>
-      <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[#1E293B]">
-              {["Member", "Role", "Status", "Last active", ""].map(h => (
-                <th key={h} className="text-left px-4 py-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#1E293B]">
-            {members.map(m => (
-              <tr key={m.email} className="hover:bg-[#0B1220] transition-colors">
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold text-slate-300 flex-shrink-0">
-                      {m.name[0]}
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-slate-200">{m.name}</div>
-                      <div className="text-xs text-slate-500">{m.email}</div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${roleColors[m.role]}`}>{m.role}</span>
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`text-[10px] font-medium ${m.status === "Active" ? "text-emerald-400" : "text-slate-500"}`}>
-                    {m.status === "Active" ? "● Active" : "○ Invited"}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-xs text-slate-500">{m.lastActive}</td>
-                <td className="px-4 py-3">
-                  <button className="text-slate-500 hover:text-slate-300 transition-colors">
-                    <MoreHorizontal className="w-4 h-4" />
-                  </button>
-                </td>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="w-5 h-5 text-slate-600 animate-spin" />
+        </div>
+      ) : error ? (
+        <div className="py-16 text-center">
+          <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-3" />
+          <div className="text-sm text-red-400 mb-3">{error}</div>
+          <Button size="sm" className="bg-cyan-400/10 text-cyan-400 hover:bg-cyan-400/20 text-xs" onClick={load}>
+            Retry
+          </Button>
+        </div>
+      ) : (
+        <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[#1E293B]">
+                {["Member", "Role", "Joined", ""].map(h => (
+                  <th key={h} className="text-left px-4 py-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-[#1E293B]">
+              {members.map(m => (
+                <tr key={m.id} className="hover:bg-[#0B1220] transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold text-slate-300 flex-shrink-0">
+                        {m.user.name[0]}
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-slate-200">{m.user.name}</div>
+                        <div className="text-xs text-slate-500">{m.user.email}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${roleColors[m.role] ?? roleColors.VIEWER}`}>{roleLabel(m.role)}</span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-500">{formatRelativeTime(m.joinedAt)}</td>
+                  <td className="px-4 py-3">
+                    <button disabled title="Role management isn't available yet." className="text-slate-700 cursor-not-allowed">
+                      <MoreHorizontal className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -301,6 +385,9 @@ function MembersSection() {
 function ProvidersSection() {
   return (
     <div className="space-y-4 max-w-2xl">
+      <NotWiredBanner>
+        Demo data — there&apos;s no provider-key model or routes on the backend yet, so nothing here is connected to real credentials.
+      </NotWiredBanner>
       <p className="text-sm text-slate-400">Connect AI provider API keys. Keys are masked after saving and never exposed in logs.</p>
       <ProviderCard name="OpenRouter" logo="OR" connected={true} model="gpt-4o" isDefault={true} />
       <ProviderCard name="Groq" logo="G" connected={true} model="llama-3.1-70b" isDefault={false} />
@@ -309,14 +396,323 @@ function ProvidersSection() {
   );
 }
 
+const providerMeta: Record<IntegrationProvider, { label: string; description: string; icon: LucideIcon }> = {
+  SLACK_WEBHOOK: { label: "Slack", description: "Post incident alerts and approval notifications to a Slack channel via webhook.", icon: Hash },
+  TICKETING_WEBHOOK: { label: "Ticketing webhook", description: "Push new tickets to an external ticketing system (Zendesk, Jira, etc.).", icon: Globe },
+  GENERIC_WEBHOOK: { label: "Generic webhook", description: "Send events to any endpoint via HTTP POST.", icon: Link2 },
+};
+
+function AddIntegrationModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (integration: Integration) => void;
+}) {
+  const [provider, setProvider] = useState<IntegrationProvider>("GENERIC_WEBHOOK");
+  const [name, setName] = useState("");
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [secretHeaderName, setSecretHeaderName] = useState("");
+  const [secretHeaderValue, setSecretHeaderValue] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async () => {
+    if (!name.trim() || !webhookUrl.trim()) {
+      setError("Name and webhook URL are required.");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await createIntegration({
+        provider,
+        name: name.trim(),
+        credentials: {
+          webhookUrl: webhookUrl.trim(),
+          ...(secretHeaderName.trim() ? { secretHeaderName: secretHeaderName.trim() } : {}),
+          ...(secretHeaderValue.trim() ? { secretHeaderValue: secretHeaderValue.trim() } : {}),
+        },
+      });
+      onCreated(res.data.integration);
+      onClose();
+    } catch (err) {
+      setError(
+        err instanceof RateLimitError
+          ? `Rate limited, retry in ${err.retryAfterSeconds}s.`
+          : err instanceof Error ? err.message : "Couldn't create integration."
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+      <div className="bg-[#0F172A] border border-[#1E293B] rounded-2xl w-full max-w-md p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="text-base font-semibold text-slate-100">Add integration</div>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-300">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div>
+          <label className="block text-xs text-slate-400 mb-1.5">Provider</label>
+          <select
+            value={provider}
+            onChange={e => setProvider(e.target.value as IntegrationProvider)}
+            className="w-full bg-[#0B1220] border border-[#334155] rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-400 transition-colors"
+          >
+            {(Object.keys(providerMeta) as IntegrationProvider[]).map(p => (
+              <option key={p} value={p}>{providerMeta[p].label}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs text-slate-400 mb-1.5">Name</label>
+          <input
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="e.g. #incidents alerts"
+            className="w-full bg-[#0B1220] border border-[#334155] rounded-xl px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-400 transition-colors"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-slate-400 mb-1.5">Webhook URL</label>
+          <input
+            value={webhookUrl}
+            onChange={e => setWebhookUrl(e.target.value)}
+            placeholder="https://hooks.example.com/..."
+            className="w-full bg-[#0B1220] border border-[#334155] rounded-xl px-3 py-2 text-sm text-slate-200 font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-400 transition-colors"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs text-slate-400 mb-1.5">Secret header name <span className="text-slate-600">(optional)</span></label>
+            <input
+              value={secretHeaderName}
+              onChange={e => setSecretHeaderName(e.target.value)}
+              placeholder="X-Signature"
+              className="w-full bg-[#0B1220] border border-[#334155] rounded-xl px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-400 transition-colors"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-slate-400 mb-1.5">Secret header value <span className="text-slate-600">(optional)</span></label>
+            <input
+              value={secretHeaderValue}
+              onChange={e => setSecretHeaderValue(e.target.value)}
+              type="password"
+              placeholder="••••••••"
+              className="w-full bg-[#0B1220] border border-[#334155] rounded-xl px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-400 transition-colors"
+            />
+          </div>
+        </div>
+
+        {error && (
+          <div className="flex items-start gap-2 bg-red-400/10 border border-red-400/20 rounded-xl p-3">
+            <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-red-300">{error}</p>
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          <Button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="flex-1 bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-semibold text-sm disabled:opacity-50"
+          >
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Add integration"}
+          </Button>
+          <Button onClick={onClose} disabled={submitting} variant="outline" className="border-[#334155] text-slate-400 hover:text-slate-200 hover:bg-[#1E293B] bg-transparent">
+            Cancel
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IntegrationRow({
+  integration,
+  onToggle,
+  onDelete,
+}: {
+  integration: Integration;
+  onToggle: (integration: Integration) => void;
+  onDelete: (integration: Integration) => void;
+}) {
+  const meta = providerMeta[integration.provider];
+  const Icon = meta?.icon ?? Link2;
+  const active = integration.status === "ACTIVE";
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <div className={`bg-[#0F172A] border rounded-xl p-4 flex items-start gap-4 ${active ? "border-emerald-400/20" : "border-[#1E293B]"}`}>
+      <div className="w-9 h-9 rounded-xl bg-[#1E293B] border border-[#334155] flex items-center justify-center flex-shrink-0">
+        <Icon className="w-5 h-5 text-slate-400" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+          <span className="text-sm font-medium text-slate-200">{integration.name}</span>
+          <span className="text-[10px] text-slate-500 bg-slate-500/10 px-1.5 py-0.5 rounded-full border border-slate-500/20">{meta?.label ?? integration.provider}</span>
+          {active ? (
+            <span className="text-[10px] text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded-full border border-emerald-400/20">Active</span>
+          ) : (
+            <span className="text-[10px] text-slate-500 bg-slate-500/10 px-1.5 py-0.5 rounded-full border border-slate-500/20">Disabled</span>
+          )}
+        </div>
+        <p className="text-xs text-slate-500">{meta?.description}</p>
+        <p className="text-[10px] text-slate-600 mt-1">
+          {integration.lastUsedAt ? `Last used ${formatRelativeTime(integration.lastUsedAt)}` : "Never used"} · added {formatRelativeTime(integration.createdAt)}
+        </p>
+      </div>
+      <div className="flex gap-2 flex-shrink-0">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          className="border-[#334155] text-slate-400 hover:text-slate-200 hover:bg-[#1E293B] bg-transparent text-xs disabled:opacity-50"
+          onClick={async () => { setBusy(true); await onToggle(integration); setBusy(false); }}
+        >
+          {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : active ? "Disable" : "Enable"}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          className="border-red-400/30 text-red-400 hover:bg-red-400/10 bg-transparent text-xs disabled:opacity-50"
+          onClick={() => onDelete(integration)}
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function IntegrationsSection() {
+  const [integrations, setIntegrations] = useState<Integration[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Integration | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await listIntegrations();
+      setIntegrations(res.data.integrations);
+    } catch (err) {
+      setError(
+        err instanceof RateLimitError
+          ? `Rate limited, retry in ${err.retryAfterSeconds}s.`
+          : "Couldn't load integrations."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleToggle = async (integration: Integration) => {
+    const nextStatus: IntegrationStatus = integration.status === "ACTIVE" ? "DISABLED" : "ACTIVE";
+    try {
+      const res = await updateIntegrationStatus(integration.id, nextStatus);
+      setIntegrations(prev => prev.map(i => i.id === integration.id ? res.data.integration : i));
+    } catch (err) {
+      setError(
+        err instanceof RateLimitError
+          ? `Rate limited, retry in ${err.retryAfterSeconds}s.`
+          : "Couldn't update integration status."
+      );
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    try {
+      await deleteIntegration(pendingDelete.id);
+      setIntegrations(prev => prev.filter(i => i.id !== pendingDelete.id));
+      setPendingDelete(null);
+    } catch (err) {
+      setError(
+        err instanceof RateLimitError
+          ? `Rate limited, retry in ${err.retryAfterSeconds}s.`
+          : "Couldn't delete integration."
+      );
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-3 max-w-2xl">
-      <p className="text-sm text-slate-400 mb-4">Connect external tools to enable AI-assisted actions and notifications.</p>
-      <IntegrationCard name="GitHub" description="Create issues, PRs, and receive webhook events." icon={GitBranch} connected />
-      <IntegrationCard name="Slack" description="Receive incident alerts and approval notifications." icon={Hash} comingSoon />
-      <IntegrationCard name="Zendesk" description="Sync tickets and push AI-suggested replies." icon={Globe} comingSoon />
-      <IntegrationCard name="Webhooks" description="Send events to any endpoint via HTTP POST." icon={Link2} />
+      {showAdd && (
+        <AddIntegrationModal
+          onClose={() => setShowAdd(false)}
+          onCreated={integration => setIntegrations(prev => [integration, ...prev])}
+        />
+      )}
+
+      {pendingDelete && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0F172A] border border-[#1E293B] rounded-2xl w-full max-w-sm p-6 space-y-4">
+            <div className="text-base font-semibold text-slate-100">Delete integration?</div>
+            <p className="text-sm text-slate-400">This will permanently remove <span className="text-slate-200 font-medium">{pendingDelete.name}</span>. This can&apos;t be undone.</p>
+            <div className="flex gap-3">
+              <Button onClick={handleConfirmDelete} disabled={deleting} className="flex-1 bg-red-500 hover:bg-red-400 text-white font-semibold text-sm disabled:opacity-50">
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Delete"}
+              </Button>
+              <Button onClick={() => setPendingDelete(null)} disabled={deleting} variant="outline" className="border-[#334155] text-slate-400 hover:text-slate-200 hover:bg-[#1E293B] bg-transparent">
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-sm text-slate-400">Connect external tools to enable AI-assisted actions and notifications.</p>
+        <Button size="sm" onClick={() => setShowAdd(true)} className="bg-cyan-400 text-slate-950 hover:bg-cyan-300 font-semibold text-xs flex-shrink-0 ml-3">
+          <Plus className="w-3.5 h-3.5 mr-1.5" /> Add
+        </Button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="w-5 h-5 text-slate-600 animate-spin" />
+        </div>
+      ) : error ? (
+        <div className="py-16 text-center">
+          <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-3" />
+          <div className="text-sm text-red-400 mb-3">{error}</div>
+          <Button size="sm" className="bg-cyan-400/10 text-cyan-400 hover:bg-cyan-400/20 text-xs" onClick={load}>
+            Retry
+          </Button>
+        </div>
+      ) : integrations.length === 0 ? (
+        <div className="py-16 text-center">
+          <GitBranch className="w-8 h-8 text-slate-700 mx-auto mb-2" />
+          <div className="text-sm text-slate-500">No integrations yet</div>
+        </div>
+      ) : (
+        integrations.map(integration => (
+          <IntegrationRow
+            key={integration.id}
+            integration={integration}
+            onToggle={handleToggle}
+            onDelete={setPendingDelete}
+          />
+        ))
+      )}
     </div>
   );
 }
@@ -324,6 +720,9 @@ function IntegrationsSection() {
 function AuditSection() {
   return (
     <div className="space-y-4">
+      <NotWiredBanner>
+        Demo data — the backend writes audit log entries for actions like approvals and integration changes, but there&apos;s no read endpoint yet to list them here.
+      </NotWiredBanner>
       <p className="text-sm text-slate-400">A complete log of actions taken by team members and the AI agent.</p>
       <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl overflow-hidden">
         <table className="w-full text-sm">
@@ -370,6 +769,9 @@ function AuditSection() {
 function SecuritySection() {
   return (
     <div className="max-w-xl space-y-5">
+      <NotWiredBanner>
+        Demo data — these toggles aren&apos;t backed by real settings yet, though role-based access control itself is genuinely enforced server-side via the RBAC middleware on every route.
+      </NotWiredBanner>
       <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-4">
         <div className="text-sm font-semibold text-slate-200 mb-3">Workspace access</div>
         <div className="space-y-3 text-sm">
@@ -416,6 +818,15 @@ function SecuritySection() {
 
 export function SettingsPage() {
   const [section, setSection] = useState<Section>("organization");
+  const [orgName, setOrgName] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCurrentOrganization()
+      .then(res => { if (!cancelled) setOrgName(res.data.organization.name); })
+      .catch(() => { /* header falls back to a generic label; section body surfaces the real error */ });
+    return () => { cancelled = true; };
+  }, []);
 
   const sectionContent: Record<Section, React.ReactNode> = {
     organization: <OrganizationSection />,
@@ -424,6 +835,9 @@ export function SettingsPage() {
     integrations: <IntegrationsSection />,
     notifications: (
       <div className="max-w-xl">
+        <NotWiredBanner>
+          Demo data — there&apos;s no notification-preferences model or routes on the backend yet, so these checkboxes don&apos;t persist anything.
+        </NotWiredBanner>
         <p className="text-sm text-slate-400">Configure how and when you receive notifications.</p>
         <div className="mt-4 space-y-3">
           {[
@@ -452,6 +866,9 @@ export function SettingsPage() {
     ),
     billing: (
       <div className="max-w-lg space-y-4">
+        <NotWiredBanner>
+          Demo data — there&apos;s no billing/usage model or routes on the backend yet, so plan, usage, and upgrade actions here aren&apos;t real.
+        </NotWiredBanner>
         <div className="bg-[#0F172A] border border-cyan-400/20 rounded-xl p-5">
           <div className="flex items-center justify-between mb-3">
             <div>
@@ -484,7 +901,7 @@ export function SettingsPage() {
       <div className="w-52 xl:w-64 border-r border-[#1E293B] bg-[#0F172A] flex-shrink-0 overflow-y-auto">
         <div className="px-4 py-5 border-b border-[#1E293B]">
           <h1 className="text-base font-bold text-slate-50">Settings</h1>
-          <p className="text-xs text-slate-500 mt-0.5">Acme Corp workspace</p>
+          <p className="text-xs text-slate-500 mt-0.5">{orgName ?? "Your workspace"}</p>
         </div>
         <nav className="p-2 space-y-0.5">
           {navItems.map(({ id, label, icon: Icon }) => (

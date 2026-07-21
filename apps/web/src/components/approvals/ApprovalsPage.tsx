@@ -307,24 +307,30 @@ export function ApprovalsPage() {
   const handleApprove = async (id: string) => {
     await approveToolCall(id);
     setActioned(prev => ({ ...prev, [id]: "Approved" }));
-    setToolCalls(prev => prev.filter(t => t.id !== id));
+    // Notify the sidebar so its badge count refreshes immediately instead
+    // of waiting for its next poll.
+    window.dispatchEvent(new Event("approvals:changed"));
   };
 
   const handleReject = async (id: string, reason?: string) => {
     await rejectToolCall(id, reason);
     setActioned(prev => ({ ...prev, [id]: "Rejected" }));
-    setToolCalls(prev => prev.filter(t => t.id !== id));
+    window.dispatchEvent(new Event("approvals:changed"));
   };
 
-  const pendingCount = toolCalls.length;
+  // Pending count should only reflect items still awaiting a decision, not
+  // ones this session already approved/rejected (those stay in `toolCalls`
+  // now so the Approved/Rejected tabs have something to show).
+  const pendingCount = toolCalls.filter(t => getStatus(t.id) === "Pending").length;
 
   const filtered = toolCalls.filter(t => {
     const risk = inferRisk(t);
+    const status = getStatus(t.id);
     if (filter === "All") return true;
-    if (filter === "Pending") return true;
-    if (filter === "High risk") return risk === "High";
-    if (filter === "Approved") return false;
-    if (filter === "Rejected") return false;
+    if (filter === "Pending") return status === "Pending";
+    if (filter === "High risk") return risk === "High" && status === "Pending";
+    if (filter === "Approved") return status === "Approved";
+    if (filter === "Rejected") return status === "Rejected";
     return true;
   });
 
@@ -333,7 +339,7 @@ export function ApprovalsPage() {
   return (
     <div className="flex h-full bg-[#020617] overflow-hidden">
       {/* List panel */}
-      <div className={`flex flex-col ${selected ? "hidden lg:flex lg:w-[420px] xl:w-[480px]" : "flex-1"} border-r border-[#1E293B]`}>
+      <div className={`flex flex-col ${selected ? "hidden lg:flex lg:w-105 xl:w-120" : "flex-1"} border-r border-[#1E293B]`}>
         <div className="px-5 py-4 border-b border-[#1E293B]">
           <div className="flex items-center justify-between mb-3">
             <div>
@@ -394,7 +400,7 @@ export function ApprovalsPage() {
                     <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${riskBadge(risk)}`}>{risk}</span>
                     <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${statusBadge(status)}`}>{status}</span>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-slate-600 flex-shrink-0 mt-0.5" />
+                  <ChevronRight className="w-4 h-4 text-slate-600 shrink-0 mt-0.5" />
                 </div>
                 <div className="text-sm font-medium text-slate-200 leading-tight mb-2 font-mono">{t.toolName}</div>
                 <div className="flex items-center gap-2 text-[11px] text-slate-500 flex-wrap">

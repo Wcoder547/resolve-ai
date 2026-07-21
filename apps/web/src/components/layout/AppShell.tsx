@@ -16,9 +16,18 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger
 } from "../ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
-import { getAccessToken, getUser, clearSession } from "@/lib/auth";
-import { getCurrentUser, logoutUser } from "@/lib/api";
-import type { AuthUser } from "@/types/auth";
+import { getAccessToken, getUser, getOrganization, saveOrganization, clearSession } from "@/lib/auth";
+import { getCurrentUser, getCurrentOrganization, logoutUser, listPendingToolCalls } from "@/lib/api";
+import type { AuthUser, AuthOrganization } from "@/types/auth";
+
+type SidebarOrganization = AuthOrganization & { plan?: string };
+
+function orgInitials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
 
 const navItems = [
   { label: "Overview", icon: LayoutDashboard, path: "/dashboard" },
@@ -26,7 +35,7 @@ const navItems = [
   { label: "AI Chat", icon: MessageSquare, path: "/chat" },
   { label: "Tickets", icon: Ticket, path: "/tickets" },
   { label: "Incidents", icon: AlertTriangle, path: "/incidents", badge: "1", badgeVariant: "danger" },
-  { label: "Approvals", icon: CheckSquare, path: "/approvals", badge: "3", badgeVariant: "warning" },
+  { label: "Approvals", icon: CheckSquare, path: "/approvals", badgeVariant: "warning" },
   { label: "Agent Runs", icon: Activity, path: "/agent-runs" },
   { label: "Analytics", icon: BarChart3, path: "/analytics" },
 ];
@@ -40,7 +49,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [org, setOrg] = useState<SidebarOrganization | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [pendingApprovals, setPendingApprovals] = useState<number | null>(null);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -57,6 +68,23 @@ export function AppShell({ children }: { children: ReactNode }) {
       setCheckingAuth(false);
     }
 
+    const cachedOrg = getOrganization();
+    if (cachedOrg) setOrg(cachedOrg);
+
+    // Refresh org details in the background (name/plan/role can change,
+    // and cached org may be missing `plan` if it was saved before that
+    // field existed on the response).
+    getCurrentOrganization()
+      .then((res) => {
+        setOrg(res.data.organization);
+        saveOrganization(res.data.organization);
+      })
+      .catch(() => {
+        // Non-fatal — keep whatever we had cached rather than blanking
+        // the sidebar over a transient failure. Auth validity itself is
+        // already checked by the getCurrentUser() call below.
+      });
+
     // Validate the token against the backend and refresh user info in the
     // background; if it's expired or invalid, boot back to login.
     getCurrentUser()
@@ -69,6 +97,36 @@ export function AppShell({ children }: { children: ReactNode }) {
         router.replace("/login");
       });
   }, [router]);
+
+  // Poll the pending-approvals count for the sidebar badge. Runs only once
+  // auth has resolved, refreshes every 30s, and can be triggered immediately
+  // via the "approvals:changed" event (dispatched e.g. after an approve/reject
+  // action) so the badge doesn't wait for the next poll tick.
+  useEffect(() => {
+    if (checkingAuth) return;
+
+    let cancelled = false;
+
+    const fetchPending = async () => {
+      try {
+        const res = await listPendingToolCalls();
+        if (!cancelled) setPendingApprovals(res.data.toolCalls.length);
+      } catch {
+        // Non-fatal — leave the last known count in place rather than
+        // clearing the badge on a transient failure.
+      }
+    };
+
+    fetchPending();
+    const interval = setInterval(fetchPending, 30000);
+    window.addEventListener("approvals:changed", fetchPending);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      window.removeEventListener("approvals:changed", fetchPending);
+    };
+  }, [checkingAuth]);
 
   const handleLogout = async () => {
     try {
@@ -105,6 +163,15 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const currentPage = navItems.find(i => isActive(i.path))?.label ||
     bottomItems.find(i => isActive(i.path))?.label || "Overview";
+
+  // Approvals gets its badge from live data; everything else (currently just
+  // Incidents) still uses its static field until that has a real data source too.
+  const resolveBadge = (item: (typeof navItems)[number]): string | undefined => {
+    if (item.path === "/approvals") {
+      return pendingApprovals && pendingApprovals > 0 ? String(pendingApprovals) : undefined;
+    }
+    return item.badge;
+  };
 
   return (
     <TooltipProvider>
@@ -152,11 +219,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="px-3 py-2 border-b border-[#1E293B]">
               <button className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[#1E293B] transition-colors text-left">
                 <div className="w-5 h-5 rounded bg-violet-500/20 border border-violet-500/30 flex items-center justify-center shrink-0">
-                  <span className="text-[9px] font-bold text-violet-400">AC</span>
+                  <span className="text-[9px] font-bold text-violet-400">{org ? orgInitials(org.name) : "…"}</span>
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-xs font-medium text-slate-200 truncate">Acme Corp</div>
-                  <div className="text-[10px] text-slate-500">Pro plan</div>
+                  <div className="text-xs font-medium text-slate-200 truncate">{org?.name ?? "Loading…"}</div>
+                  <div className="text-[10px] text-slate-500">{org?.plan ? `${org.plan.charAt(0)}${org.plan.slice(1).toLowerCase()} plan` : "\u00A0"}</div>
                 </div>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
               </button>
@@ -168,6 +235,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {navItems.map((item) => {
               const Icon = item.icon;
               const active = isActive(item.path);
+              const badge = resolveBadge(item);
               return (
                 <Tooltip key={item.path} delayDuration={0}>
                   <TooltipTrigger asChild>
@@ -185,12 +253,12 @@ export function AppShell({ children }: { children: ReactNode }) {
                       {sidebarOpen && (
                         <>
                           <span className="flex-1 text-left">{item.label}</span>
-                          {item.badge && (
+                          {badge && (
                             <span className={`
                               text-[10px] font-semibold px-1.5 py-0.5 rounded-full
                               ${item.badgeVariant === "danger" ? "bg-red-500/20 text-red-400" : "bg-yellow-500/20 text-yellow-400"}
                             `}>
-                              {item.badge}
+                              {badge}
                             </span>
                           )}
                         </>
@@ -300,7 +368,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
             {/* Breadcrumb */}
             <div className="flex items-center gap-1.5 text-sm flex-1 min-w-0">
-              <span className="text-slate-500">Acme Corp</span>
+              <span className="text-slate-500">{org?.name ?? "Workspace"}</span>
               <ChevronRight className="w-3.5 h-3.5 text-slate-600 shrink-0" />
               <span className="text-slate-300 font-medium truncate">{currentPage}</span>
             </div>

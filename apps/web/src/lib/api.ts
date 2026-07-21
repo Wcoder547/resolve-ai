@@ -9,6 +9,15 @@ import type {
 } from "@/types/auth";
 
 import type {
+  CreateIntegrationPayload,
+  CreateIntegrationResponse,
+  DeleteIntegrationResponse,
+  ListIntegrationsResponse,
+  IntegrationStatus,
+  UpdateIntegrationStatusResponse
+} from "@/types/integrations";
+
+import type {
   DeleteKnowledgeSourceResponse,
   GetKnowledgeSourceResponse,
   IngestKnowledgeSourceResponse,
@@ -53,6 +62,29 @@ type RegisterPayload = {
   organizationName: string;
 };
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+export class RateLimitError extends ApiError {
+  retryAfterSeconds: number;
+
+  constructor(retryAfterSeconds: number, message?: string) {
+    super(
+      message || `Rate limited. Try again in ${retryAfterSeconds}s.`,
+      429
+    );
+    this.name = "RateLimitError";
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
 async function request<TResponse>(
   path: string,
   options: RequestInit = {}
@@ -65,10 +97,27 @@ async function request<TResponse>(
     }
   });
 
-  const data = await response.json();
+  // Some error responses (e.g. from a rate limiter sitting in front of the
+  // app) may not have a JSON body — don't let a parse failure mask the
+  // real status.
+  let data: unknown = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = null;
+  }
 
   if (!response.ok) {
-    throw new Error(data.message || "Something went wrong.");
+    const errorBody = data as { message?: string } | null;
+    if (response.status === 429) {
+      const retryAfterHeader = response.headers.get("retry-after");
+      const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : NaN;
+      throw new RateLimitError(
+        Number.isFinite(retryAfterSeconds) ? retryAfterSeconds : 60,
+        errorBody?.message
+      );
+    }
+    throw new ApiError(errorBody?.message || "Something went wrong.", response.status);
   }
 
   return data as TResponse;
@@ -519,6 +568,77 @@ export function rejectToolCall(toolCallId: string, reason?: string) {
         Authorization: `Bearer ${token}`
       },
       body: JSON.stringify({ reason: reason || undefined })
+    }
+  );
+}
+
+export function listIntegrations() {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<ListIntegrationsResponse>("/api/v1/integrations", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+}
+
+export function createIntegration(payload: CreateIntegrationPayload) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<CreateIntegrationResponse>("/api/v1/integrations", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+export function updateIntegrationStatus(
+  integrationId: string,
+  status: IntegrationStatus
+) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<UpdateIntegrationStatusResponse>(
+    `/api/v1/integrations/${integrationId}/status`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ status })
+    }
+  );
+}
+
+export function deleteIntegration(integrationId: string) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<DeleteIntegrationResponse>(
+    `/api/v1/integrations/${integrationId}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
     }
   );
 }

@@ -24,7 +24,7 @@ export const authRateLimiter = rateLimit({
 
 export const aiChatRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 60,
+  limit: Number(process.env.AI_CHAT_RATE_LIMIT) || 500,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
