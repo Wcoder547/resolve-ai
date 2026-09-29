@@ -27,7 +27,7 @@ export async function getAiUsageSummaryController(
   res: Response
 ) {
     const req = _req as AuthenticatedRequest;
-  const membership = await getPrimaryMembership(_req.user.id);
+  const membership = await getPrimaryMembership(req.user.id);
 
   const summary = await getOrganizationAiUsageSummary(
     membership.organizationId
@@ -45,7 +45,7 @@ export async function listAiUsageEventsController(
   res: Response
 ) {
     const req = _req as AuthenticatedRequest;
-  const membership = await getPrimaryMembership(_req.user.id);
+  const membership = await getPrimaryMembership(req.user.id);
 
   const limit = Math.min(Number(_req.query.limit || 50), 100);
 

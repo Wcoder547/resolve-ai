@@ -257,6 +257,7 @@ async function contextualizeQuestion(input: {
       promptVersion: "disabled",
       fallbackUsed: false,
       providerErrors: [] as string[],
+      usage: null,
     };
   }
 
@@ -300,6 +301,7 @@ async function contextualizeQuestion(input: {
           ? error.message
           : "Unknown question rewrite error",
       ],
+      usage: null,
     };
   }
 }

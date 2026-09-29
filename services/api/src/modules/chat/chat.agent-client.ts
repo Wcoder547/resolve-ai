@@ -80,6 +80,9 @@ export type AgenticResolveResponse = {
 export type AgentToolCall = {
   toolCallId: string;
   toolName: string;
+  toolCategory?: string | null;
+  requiresApproval?: boolean;
+  approvalStatus?: string | null;
   status: string;
   reason?: string | null;
   latencyMs: number;

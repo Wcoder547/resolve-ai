@@ -8,7 +8,7 @@ import type { AgenticResolveResponse } from "./chat.agent-client.js";
 
 
 
-function mapApprovalStatus(status?: string): AgentToolApprovalStatus {
+function mapApprovalStatus(status?: string | null): AgentToolApprovalStatus {
   if (status === "PENDING") return "PENDING";
   if (status === "APPROVED") return "APPROVED";
   if (status === "REJECTED") return "REJECTED";

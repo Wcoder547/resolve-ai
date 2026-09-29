@@ -1,4 +1,4 @@
-import { Queue } from "bullmq";
+import { Queue, type ConnectionOptions } from "bullmq";
 import { env } from "../../config/env.js";
 import { createRedisConnection } from "../../lib/redis.js";
 import { QUEUE_NAMES } from "./jobs.constants.js";
@@ -9,10 +9,12 @@ import type {
 
 const queueConnection = createRedisConnection();
 
-export const knowledgeIngestionQueue = new Queue<KnowledgeIngestionJobData>(
-  QUEUE_NAMES.KNOWLEDGE_INGESTION,
-  {
-    connection: queueConnection,
+export const knowledgeIngestionQueue = new Queue<
+  KnowledgeIngestionJobData,
+  void,
+  "ingest-knowledge-source"
+>(QUEUE_NAMES.KNOWLEDGE_INGESTION, {
+    connection: queueConnection as ConnectionOptions,
     prefix: env.QUEUE_PREFIX,
     defaultJobOptions: {
       attempts: env.INGESTION_JOB_ATTEMPTS,

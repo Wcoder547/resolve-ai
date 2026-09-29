@@ -676,8 +676,8 @@ export async function askAgenticQuestion(
           mode: "agentic",
           localAgentRunId: agentRun.id,
           grounded: false,
-          toolCalls: agentResponse.data.toolCalls,
-          toolCallsCount: agentResponse.data.toolCalls.length,
+          toolCalls: [],
+          toolCallsCount: 0,
           reason: "AGENTIC_GENERATION_FAILED",
           error: errorMessage,
           originalQuestion: input.question,
@@ -699,10 +699,8 @@ export async function askAgenticQuestion(
       organizationId: membership.organizationId,
       action: "AGENTIC_CHAT_GENERATION_FAILED",
       metadata: {
-        toolCallsCount: agentResponse.data.toolCalls.length,
-        toolNames: agentResponse.data.toolCalls.map(
-          (toolCall) => toolCall.toolName,
-        ),
+        toolCallsCount: 0,
+        toolNames: [],
         conversationId: conversation.id,
         userMessageId: userMessage.id,
         assistantMessageId: assistantMessage.id,

@@ -218,10 +218,25 @@ export async function ingestKnowledgeSourceController(
 ) {
     const req = _req as AuthenticatedRequest;
   try {
-    const payload = await getKnowledgeIngestionQueuePayload(
-   req.user?.id,
-   req.params.sourceId
-);
+    const userId = req.user?.id;
+    const sourceId =
+      typeof req.params.sourceId === "string" ? req.params.sourceId : undefined;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+      });
+    }
+
+    if (!sourceId) {
+      return res.status(400).json({
+        success: false,
+        message: "Source ID is required.",
+      });
+    }
+
+    const payload = await getKnowledgeIngestionQueuePayload(userId, sourceId);
 
 const job = await enqueueKnowledgeIngestionJob({
   userId: payload.userId,

@@ -34,13 +34,16 @@ describe("Knowledge ingestion queue", () => {
     });
 
     expect(addMock).toHaveBeenCalledTimes(1);
-    expect(addMock.mock.calls[0]?.[0]).toBe("ingest-knowledge-source");
-    expect(addMock.mock.calls[0]?.[1]).toMatchObject({
-      sourceId: "source-1",
-      userId: "user-1",
-      organizationId: "org-1",
-      trigger: "UPLOAD",
-    });
+    expect(addMock).toHaveBeenCalledWith(
+      "ingest-knowledge-source",
+      expect.objectContaining({
+        sourceId: "source-1",
+        userId: "user-1",
+        organizationId: "org-1",
+        trigger: "UPLOAD",
+      }),
+      expect.any(Object),
+    );
     expect(result.id).toBe("queued-job-1");
     expect(result.queueName).toBeTruthy();
   });

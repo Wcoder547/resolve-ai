@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { Worker } from "bullmq";
+import { Worker, type ConnectionOptions } from "bullmq";
 import { env } from "../config/env.js";
 import { createRedisConnection } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
@@ -10,7 +10,11 @@ import { logger } from "../lib/logger.js";
 
 const workerConnection = createRedisConnection();
 
-const worker = new Worker<KnowledgeIngestionJobData>(
+const worker = new Worker<
+  KnowledgeIngestionJobData,
+  { sourceId: string; result: unknown },
+  "ingest-knowledge-source"
+>(
   QUEUE_NAMES.KNOWLEDGE_INGESTION,
   async (job) => {
     const { sourceId, userId, organizationId, trigger } = job.data;
@@ -54,7 +58,7 @@ const worker = new Worker<KnowledgeIngestionJobData>(
     };
   },
   {
-    connection: workerConnection,
+    connection: workerConnection as ConnectionOptions,
     prefix: env.QUEUE_PREFIX,
     concurrency: env.KNOWLEDGE_INGESTION_CONCURRENCY,
     lockDuration: 10 * 60 * 1000
