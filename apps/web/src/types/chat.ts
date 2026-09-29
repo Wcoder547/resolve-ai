@@ -38,11 +38,18 @@ export type AskChatResponse = {
     sources: ChatSource[];
     retrievedChunks: RetrievedChunk[];
     grounded: boolean;
+    confidence?: string | null;
     model: string | null;
     provider: string | null;
     retrievalQuery?: string;
   };
 };
+
+export type ChatStreamEvent =
+  | { type: "status"; status: "retrieving" | "generating" | string }
+  | { type: "token"; text: string }
+  | { type: "done"; data: AskChatResponse["data"] }
+  | { type: "error"; message: string };
 
 // Response from POST /chat/agent/ask — the agentic version of /chat/ask.
 // Same request payload, but this is the endpoint that actually records an
@@ -83,6 +90,7 @@ export type ChatMessage = {
   sources?: ChatSource[];
   retrievedChunks?: RetrievedChunk[];
   grounded?: boolean;
+  confidence?: string | null;
   provider?: string | null;
   model?: string | null;
   createdAt: string;
@@ -127,7 +135,9 @@ export type GetChatConversationResponse = {
           model?: string;
           provider?: string;
           grounded?: boolean;
+          confidence?: string | null;
           retrievalQuery?: string;
+          mode?: string;
         } | null;
         createdAt: string;
       }[];

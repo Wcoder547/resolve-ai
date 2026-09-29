@@ -50,12 +50,12 @@ export function AgentAskConsole() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-2xl border border-border bg-white p-6 shadow-sm">
         <div className="mb-5">
-          <h1 className="text-2xl font-semibold text-slate-950">
+          <h1 className="text-2xl font-semibold text-brand-foreground">
             Agentic Resolution Console
           </h1>
-          <p className="mt-1 text-sm text-slate-600">
+          <p className="mt-1 text-sm text-muted-foreground">
             Ask the multi-agent runtime to triage, retrieve, diagnose, use safe
             tools, and generate a support-ready resolution.
           </p>
@@ -63,33 +63,33 @@ export function AgentAskConsole() {
 
         <div className="space-y-4">
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">
+            <label className="mb-2 block text-sm font-medium text-muted-foreground">
               Question
             </label>
             <textarea
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
               rows={5}
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-900"
+              className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none focus:border-slate-900"
               placeholder="Ask an agentic support question..."
             />
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">
+              <label className="mb-2 block text-sm font-medium text-muted-foreground">
                 Conversation ID
               </label>
               <input
                 value={conversationId}
                 onChange={(event) => setConversationId(event.target.value)}
-                className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-900"
+                className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none focus:border-slate-900"
                 placeholder="Optional follow-up conversation ID"
               />
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">
+              <label className="mb-2 block text-sm font-medium text-muted-foreground">
                 Retrieval limit
               </label>
               <input
@@ -98,7 +98,7 @@ export function AgentAskConsole() {
                 max={10}
                 value={limit}
                 onChange={(event) => setLimit(Number(event.target.value))}
-                className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-900"
+                className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none focus:border-slate-900"
               />
             </div>
           </div>
@@ -112,7 +112,7 @@ export function AgentAskConsole() {
           <button
             onClick={handleAsk}
             disabled={loading || !question.trim()}
-            className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-xl bg-background px-5 py-3 text-sm font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? "Running agents..." : "Run Agentic Resolution"}
           </button>
@@ -121,7 +121,7 @@ export function AgentAskConsole() {
 
       {result ? (
         <div className="space-y-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-border bg-white p-6 shadow-sm">
             <div className="mb-4 flex flex-wrap items-center gap-3">
               <StatusBadge value={result.grounded ? "grounded" : "not grounded"} />
               <StatusBadge value={`confidence: ${result.confidence}`} />
@@ -131,46 +131,46 @@ export function AgentAskConsole() {
               ) : null}
             </div>
 
-            <h2 className="mb-3 text-lg font-semibold text-slate-950">
+            <h2 className="mb-3 text-lg font-semibold text-brand-foreground">
               Final Answer
             </h2>
 
-            <div className="whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-sm leading-7 text-slate-800">
+            <div className="whitespace-pre-wrap rounded-xl bg-muted p-4 text-sm leading-7 text-foreground/80">
               {result.answer}
             </div>
           </div>
 
           {result.agentRun ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="mb-4 text-lg font-semibold text-slate-950">
+            <div className="rounded-2xl border border-border bg-white p-6 shadow-sm">
+              <h2 className="mb-4 text-lg font-semibold text-brand-foreground">
                 Agent Run
               </h2>
 
               <div className="grid gap-4 md:grid-cols-4">
-                <div className="rounded-xl bg-slate-50 p-4">
-                  <p className="text-xs text-slate-500">Local Run ID</p>
-                  <p className="mt-1 break-all text-sm font-medium text-slate-900">
+                <div className="rounded-xl bg-muted p-4">
+                  <p className="text-xs text-muted-foreground">Local Run ID</p>
+                  <p className="mt-1 break-all text-sm font-medium text-foreground">
                     {result.agentRun.id}
                   </p>
                 </div>
 
-                <div className="rounded-xl bg-slate-50 p-4">
-                  <p className="text-xs text-slate-500">Status</p>
+                <div className="rounded-xl bg-muted p-4">
+                  <p className="text-xs text-muted-foreground">Status</p>
                   <div className="mt-2">
                     <StatusBadge value={result.agentRun.status} />
                   </div>
                 </div>
 
-                <div className="rounded-xl bg-slate-50 p-4">
-                  <p className="text-xs text-slate-500">Agents</p>
-                  <p className="mt-1 text-sm font-medium text-slate-900">
+                <div className="rounded-xl bg-muted p-4">
+                  <p className="text-xs text-muted-foreground">Agents</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">
                     {result.agentRun.agentsUsed.length}
                   </p>
                 </div>
 
-                <div className="rounded-xl bg-slate-50 p-4">
-                  <p className="text-xs text-slate-500">Tool Calls</p>
-                  <p className="mt-1 text-sm font-medium text-slate-900">
+                <div className="rounded-xl bg-muted p-4">
+                  <p className="text-xs text-muted-foreground">Tool Calls</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">
                     {result.agentRun.toolCalls.length}
                   </p>
                 </div>
@@ -179,7 +179,7 @@ export function AgentAskConsole() {
               <div className="mt-5">
                 <a
                   href={`/dashboard/agent/runs/${result.agentRun.id}`}
-                  className="text-sm font-medium text-slate-950 underline"
+                  className="text-sm font-medium text-brand-foreground underline"
                 >
                   Open full timeline and debug view
                 </a>
@@ -187,8 +187,8 @@ export function AgentAskConsole() {
             </div>
           ) : null}
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="mb-4 text-lg font-semibold text-slate-950">
+          <div className="rounded-2xl border border-border bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold text-brand-foreground">
               Raw Response
             </h2>
             <JsonBlock data={result} />

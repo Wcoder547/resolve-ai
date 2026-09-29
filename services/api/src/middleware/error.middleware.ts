@@ -5,6 +5,7 @@ import { logger } from "../lib/logger.js";
 type AppError = Error & {
   statusCode?: number;
   status?: number;
+  code?: string;
 };
 
 function getStatusCode(error: AppError) {
@@ -41,6 +42,7 @@ export function errorMiddleware(
       error: {
         name: error.name,
         message: error.message,
+        code: error.code,
         stack: isProduction ? undefined : error.stack,
       },
       request: {
@@ -59,6 +61,7 @@ export function errorMiddleware(
       isProduction && statusCode === 500
         ? "Internal server error."
         : error.message || "Something went wrong.",
+    ...(error.code ? { code: error.code } : {}),
     error: isProduction
       ? undefined
       : {

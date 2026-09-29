@@ -26,6 +26,7 @@ import healthRoutes from "./modules/health/health.routes.js";
 import knowledgeRoutes from "./modules/knowledge/knowledge.routes.js";
 import organizationRoutes from "./modules/organizations/organization.routes.js";
 import rbacRoutes from "./modules/rbac/rbac.routes.js";
+import ticketRoutes from "./modules/tickets/ticket.routes.js";
 import usageRoutes from "./modules/usage/usage.routes.js";
 
 function getAllowedOrigins() {
@@ -73,7 +74,20 @@ export function createApp() {
     }),
   );
 
-  app.use(compression());
+  app.use(
+    compression({
+      filter: (req, res) => {
+        const contentType = res.getHeader("Content-Type");
+        if (
+          typeof contentType === "string" &&
+          contentType.includes("text/event-stream")
+        ) {
+          return false;
+        }
+        return compression.filter(req, res);
+      },
+    }),
+  );
 
   app.use(
     express.json({
@@ -103,13 +117,14 @@ export function createApp() {
 
   app.use("/api", apiRateLimiter);
 
-  app.use("/api/v1/auth", authRateLimiter, authRoutes); // ok 
-  app.use("/api/v1/organizations", organizationRoutes); // ok 
-  app.use("/api/v1/knowledge", knowledgeRoutes); //ok
+  app.use("/api/v1/auth", authRateLimiter, authRoutes);
+  app.use("/api/v1/organizations", organizationRoutes);
+  app.use("/api/v1/knowledge", knowledgeRoutes);
   app.use("/api/v1/chat", aiChatRateLimiter, chatRoutes);
-  app.use("/api/v1/usage", usageRoutes); //ok 
-  app.use("/api/v1/rbac", rbacRoutes); // ok
-  app.use("/api/v1/integrations", integrationRoutes); //ok
+  app.use("/api/v1/usage", usageRoutes);
+  app.use("/api/v1/rbac", rbacRoutes);
+  app.use("/api/v1/integrations", integrationRoutes);
+  app.use("/api/v1/tickets", ticketRoutes);
 
   app.use(notFoundMiddleware);
   app.use(errorMiddleware);

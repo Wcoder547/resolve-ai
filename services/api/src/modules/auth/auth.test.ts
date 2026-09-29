@@ -2,13 +2,16 @@ import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { app } from "../../app.js";
 import { prisma } from "../../lib/prisma.js";
-import { createTestEmail } from "../../test/test-helpers.js";
+import {
+  createTestEmail,
+  markUserEmailVerified,
+} from "../../test/test-helpers.js";
 
 describe("Auth API", () => {
   it("registers a user with an organization", async () => {
     const email = createTestEmail("register");
 
-    const response = await request(app).post("/api/auth/register").send({
+    const response = await request(app).post("/api/v1/auth/register").send({
       name: "Waseem Test",
       email,
       password: "Password123",
@@ -31,14 +34,17 @@ describe("Auth API", () => {
     const email = createTestEmail("login");
     const password = "Password123";
 
-    await request(app).post("/api/auth/register").send({
+    await request(app).post("/api/v1/auth/register").send({
       name: "Login Test",
       email,
       password,
       organizationName: "Login Test Org"
     });
 
-    const response = await request(app).post("/api/auth/login").send({
+    const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+    await markUserEmailVerified(user.id);
+
+    const response = await request(app).post("/api/v1/auth/login").send({
       email,
       password
     });
@@ -50,7 +56,7 @@ describe("Auth API", () => {
   });
 
   it("rejects weak password during register", async () => {
-    const response = await request(app).post("/api/auth/register").send({
+    const response = await request(app).post("/api/v1/auth/register").send({
       name: "Weak Password",
       email: createTestEmail("weak"),
       password: "123",
@@ -63,7 +69,7 @@ describe("Auth API", () => {
   });
 
   it("rejects invalid login safely", async () => {
-    const response = await request(app).post("/api/auth/login").send({
+    const response = await request(app).post("/api/v1/auth/login").send({
       email: "missing@example.com",
       password: "password123"
     });
@@ -78,7 +84,7 @@ describe("Auth API", () => {
     const password = "Password123";
     const organizationName = "ResolveAI Lifecycle Org";
 
-    const registerResponse = await request(app).post("/api/auth/register").send({
+    const registerResponse = await request(app).post("/api/v1/auth/register").send({
       name: "Waseem Akram",
       email,
       password,
@@ -90,7 +96,12 @@ describe("Auth API", () => {
     expect(registerResponse.body.data.tokens.accessToken).toBeTruthy();
     expect(registerResponse.body.data.tokens.refreshToken).toBeTruthy();
 
-    const loginResponse = await request(app).post("/api/auth/login").send({
+    const registeredUser = await prisma.user.findUniqueOrThrow({
+      where: { email },
+    });
+    await markUserEmailVerified(registeredUser.id);
+
+    const loginResponse = await request(app).post("/api/v1/auth/login").send({
       email,
       password
     });
@@ -101,14 +112,14 @@ describe("Auth API", () => {
     const refreshToken = loginResponse.body.data.tokens.refreshToken;
 
     const meResponse = await request(app)
-      .get("/api/auth/me")
+      .get("/api/v1/auth/me")
       .set("Authorization", `Bearer ${accessToken}`);
     expect(meResponse.status).toBe(200);
     expect(meResponse.body.success).toBe(true);
     expect(meResponse.body.data.user.email).toBe(email);
     expect(meResponse.body.data.organizations.length).toBeGreaterThan(0);
 
-    const refreshResponse = await request(app).post("/api/auth/refresh").send({
+    const refreshResponse = await request(app).post("/api/v1/auth/refresh").send({
       refreshToken
     });
     expect(refreshResponse.status).toBe(200);
@@ -120,14 +131,14 @@ describe("Auth API", () => {
     expect(newRefreshToken).toBeTruthy();
     expect(newRefreshToken).not.toBe(refreshToken);
 
-    const oldRefreshReuseResponse = await request(app).post("/api/auth/refresh").send({
+    const oldRefreshReuseResponse = await request(app).post("/api/v1/auth/refresh").send({
       refreshToken
     });
     expect(oldRefreshReuseResponse.status).toBe(401);
     expect(oldRefreshReuseResponse.body.success).toBe(false);
 
     const logoutAllResponse = await request(app)
-      .post("/api/auth/logout-all")
+      .post("/api/v1/auth/logout-all")
       .set("Authorization", `Bearer ${newAccessToken}`);
     expect(logoutAllResponse.status).toBe(200);
     expect(logoutAllResponse.body.success).toBe(true);

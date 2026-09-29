@@ -153,15 +153,13 @@ def build_markdown_answer(input_data: Dict[str, Any]) -> str:
     lines = [
         "## Direct Answer",
         direct_answer,
-        "",
-        "## Recommended Steps",
     ]
 
     if recommended_steps:
+        lines.append("")
+        lines.append("## Recommended Steps")
         for index, step in enumerate(recommended_steps, start=1):
             lines.append(f"{index}. {step}")
-    else:
-        lines.append("No specific steps were available from the retrieved context.")
 
     lines.extend(
         [

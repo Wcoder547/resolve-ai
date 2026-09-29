@@ -2,9 +2,19 @@ import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { callAIEmbeddingService } from "./knowledge.embedding-client.js";
 
+/** Must stay <= AI service EmbeddingRequest.texts max_length (128). */
+const EMBEDDING_REQUEST_MAX_TEXTS = 128;
+
 type GenerateAndStoreChunkEmbeddingsInput = {
   documentId: string;
   organizationId: string;
+};
+
+type AiUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  isEstimated: boolean;
 };
 
 export function serializeVector(embedding: number[]) {
@@ -20,6 +30,24 @@ function validateEmbeddingDimensions(embedding: number[]) {
     error.name = "EmbeddingDimensionError";
     throw error;
   }
+}
+
+function emptyUsage(): AiUsage {
+  return {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    isEstimated: true
+  };
+}
+
+function mergeUsage(left: AiUsage, right: AiUsage): AiUsage {
+  return {
+    promptTokens: left.promptTokens + right.promptTokens,
+    completionTokens: left.completionTokens + right.completionTokens,
+    totalTokens: left.totalTokens + right.totalTokens,
+    isEstimated: left.isEstimated || right.isEstimated
+  };
 }
 
 async function updateChunkEmbedding(input: {
@@ -95,40 +123,64 @@ export async function generateAndStoreChunkEmbeddings(
     };
   }
 
-  const embeddingResponse = await callAIEmbeddingService(
-    chunks.map((chunk) => chunk.chunkText)
-  );
+  let provider: string | null = null;
+  let model: string | null = null;
+  let dimensions: number | null = null;
+  let usage = emptyUsage();
+  let embeddedChunks = 0;
 
-  if (embeddingResponse.data.dimensions !== env.EMBEDDING_DIMENSIONS) {
-    const error = new Error(
-      `Embedding service returned ${embeddingResponse.data.dimensions} dimensions, but Node API expects ${env.EMBEDDING_DIMENSIONS}.`
+  for (
+    let startIndex = 0;
+    startIndex < chunks.length;
+    startIndex += EMBEDDING_REQUEST_MAX_TEXTS
+  ) {
+    const batch = chunks.slice(
+      startIndex,
+      startIndex + EMBEDDING_REQUEST_MAX_TEXTS
     );
 
-    error.name = "EmbeddingDimensionError";
-    throw error;
-  }
+    const embeddingResponse = await callAIEmbeddingService(
+      batch.map((chunk) => chunk.chunkText)
+    );
 
-  for (const item of embeddingResponse.data.embeddings) {
-    const chunk = chunks[item.index];
+    if (embeddingResponse.data.dimensions !== env.EMBEDDING_DIMENSIONS) {
+      const error = new Error(
+        `Embedding service returned ${embeddingResponse.data.dimensions} dimensions, but Node API expects ${env.EMBEDDING_DIMENSIONS}.`
+      );
 
-    if (!chunk) {
-      continue;
+      error.name = "EmbeddingDimensionError";
+      throw error;
     }
 
-    await updateChunkEmbedding({
-      chunkId: chunk.id,
-      embedding: item.embedding,
-      provider: embeddingResponse.data.provider,
-      model: embeddingResponse.data.model,
-      dimensions: embeddingResponse.data.dimensions
-    });
+    provider = embeddingResponse.data.provider;
+    model = embeddingResponse.data.model;
+    dimensions = embeddingResponse.data.dimensions;
+    usage = mergeUsage(usage, embeddingResponse.data.usage);
+
+    for (const item of embeddingResponse.data.embeddings) {
+      const chunk = batch[item.index];
+
+      if (!chunk) {
+        continue;
+      }
+
+      await updateChunkEmbedding({
+        chunkId: chunk.id,
+        embedding: item.embedding,
+        provider: embeddingResponse.data.provider,
+        model: embeddingResponse.data.model,
+        dimensions: embeddingResponse.data.dimensions
+      });
+
+      embeddedChunks += 1;
+    }
   }
 
   return {
-    embeddedChunks: embeddingResponse.data.embeddings.length,
-    provider: embeddingResponse.data.provider,
-    model: embeddingResponse.data.model,
-    dimensions: embeddingResponse.data.dimensions,
-    usage: embeddingResponse.data.usage
+    embeddedChunks,
+    provider,
+    model,
+    dimensions,
+    usage
   };
 }

@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 
 import { requireAuth } from "../../middleware/auth.middleware.js";
+import { requireVerifiedEmail } from "../../middleware/email-verified.middleware.js";
 import type { AuthenticatedRequest } from "../../types/express.js";
 
 import {
@@ -9,6 +10,7 @@ import {
   deleteConversationController,
   getConversationController,
   listConversationsController,
+  streamAskQuestionController,
 } from "./chat.controller.js";
 
 import { askAgenticQuestionController } from "./chat.agent.controller.js";
@@ -49,11 +51,18 @@ function authenticatedRoute(handler: AuthenticatedRouteHandler): RequestHandler 
 }
 
 router.use(requireAuth);
+router.use(requireVerifiedEmail);
 
 router.post(
   "/ask",
   requirePermission(PERMISSIONS.CHAT_ASK),
   authenticatedRoute(askQuestionController)
+);
+
+router.post(
+  "/ask/stream",
+  requirePermission(PERMISSIONS.CHAT_ASK),
+  authenticatedRoute(streamAskQuestionController)
 );
 
 router.post(

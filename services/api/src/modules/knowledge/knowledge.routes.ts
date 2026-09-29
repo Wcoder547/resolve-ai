@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware.js";
+import { requireVerifiedEmail } from "../../middleware/email-verified.middleware.js";
 import { requirePermission } from "../rbac/rbac.middleware.js";
 import { PERMISSIONS } from "../rbac/rbac.permissions.js";
 import {
@@ -15,6 +16,7 @@ import { handleKnowledgeFileUpload } from "./knowledge.upload.js";
 const router = Router();
 
 router.use(requireAuth);
+router.use(requireVerifiedEmail);
 
 router.get(
   "/",

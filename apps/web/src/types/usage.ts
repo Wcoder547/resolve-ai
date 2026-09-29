@@ -6,7 +6,21 @@ export type AiUsagePeriod = {
   estimatedCostUsd: number;
 };
 
+export type OrganizationPlanId = "FREE" | "PRO" | "TEAM";
+
+export type OrganizationPlan = {
+  id: OrganizationPlanId;
+  label: string;
+  priceUsd: number;
+  description: string;
+  dailyRequestLimit: number;
+  dailyTokenLimit: number;
+  monthlyTokenLimit: number;
+};
+
 export type AiUsageSummary = {
+  plan: OrganizationPlanId;
+  availablePlans: OrganizationPlan[];
   daily: AiUsagePeriod & {
     date: string;
     limits: {

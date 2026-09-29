@@ -10,7 +10,7 @@ describe("RBAC", () => {
     });
 
     const response = await request(app)
-      .get("/api/rbac/me")
+      .get("/api/v1/rbac/me")
       .set("Authorization", `Bearer ${accessToken}`);
 
     expect(response.status).toBe(200);
@@ -26,7 +26,7 @@ describe("RBAC", () => {
     });
 
     const response = await request(app)
-      .post("/api/chat/ask")
+      .post("/api/v1/chat/ask")
       .set("Authorization", `Bearer ${accessToken}`)
       .send({
         question: "Payment is successful but subscription is not active.",
@@ -43,7 +43,7 @@ describe("RBAC", () => {
     });
 
     const response = await request(app)
-      .post("/api/chat/ask")
+      .post("/api/v1/chat/ask")
       .set("Authorization", `Bearer ${accessToken}`)
       .send({
         question: "Payment is successful but subscription is not active.",

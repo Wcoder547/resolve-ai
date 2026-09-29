@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="640" viewBox="0 0 640 640" fill="none" role="img" aria-label="Empty chat">
+  <title>Chat empty state</title>
+  <defs>
+    <radialGradient id="glow-c" cx="50%" cy="50%" r="42%">
+      <stop offset="0%" stop-color="#FF6A2B" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#FF6A2B" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="310" cy="320" rx="210" ry="180" fill="url(#glow-c)"/>
+  <path d="M 148 180 Q 148 156 172 156 L 448 156 Q 472 156 472 180 L 472 322 Q 472 346 448 346 L 230 346 L 186 390 L 186 346 L 172 346 Q 148 346 148 322 Z" fill="rgba(255,106,43,0.08)" stroke="#FF6A2B" stroke-width="2.2"/>
+  <text x="210" y="278" font-family="Georgia,serif" font-size="80" fill="rgba(255,106,43,0.22)" font-weight="700">"</text>
+  <line x1="196" y1="232" x2="420" y2="232" stroke="rgba(255,106,43,0.14)" stroke-width="2" stroke-linecap="round"/>
+  <line x1="196" y1="254" x2="380" y2="254" stroke="rgba(255,106,43,0.10)" stroke-width="2" stroke-linecap="round"/>
+  <line x1="196" y1="276" x2="400" y2="276" stroke="rgba(255,106,43,0.10)" stroke-width="2" stroke-linecap="round"/>
+  <path d="M 308 358 Q 308 340 326 340 L 492 340 Q 510 340 510 358 L 510 440 Q 510 458 492 458 L 420 458 L 386 490 L 386 458 L 326 458 Q 308 458 308 440 Z" fill="rgba(52,211,153,0.09)" stroke="#34D399" stroke-width="2"/>
+  <line x1="332" y1="376" x2="484" y2="376" stroke="rgba(52,211,153,0.18)" stroke-width="1.8" stroke-linecap="round"/>
+  <line x1="332" y1="396" x2="448" y2="396" stroke="rgba(52,211,153,0.12)" stroke-width="1.8" stroke-linecap="round"/>
+  <rect x="164" y="392" width="76" height="32" rx="8" fill="rgba(52,211,153,0.10)" stroke="rgba(52,211,153,0.24)" stroke-width="1.5"/>
+  <line x1="180" y1="404" x2="224" y2="404" stroke="rgba(52,211,153,0.30)" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="180" y1="414" x2="210" y2="414" stroke="rgba(52,211,153,0.20)" stroke-width="1.5" stroke-linecap="round"/>
+  <circle cx="496" cy="170" r="7" fill="rgba(255,106,43,0.30)"/>
+  <circle cx="496" cy="170" r="3.5" fill="#FF6A2B"/>
+  <circle cx="148" cy="472" r="5" fill="rgba(52,211,153,0.40)"/>
+  <circle cx="148" cy="472" r="2.5" fill="#34D399"/>
+</svg>

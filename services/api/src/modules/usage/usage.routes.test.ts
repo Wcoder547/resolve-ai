@@ -10,7 +10,7 @@ describe("Usage Routes", () => {
     });
 
     const response = await request(app)
-      .get("/api/usage/ai/summary")
+      .get("/api/v1/usage/ai/summary")
       .set("Authorization", `Bearer ${accessToken}`);
 
     expect(response.status).toBe(200);
@@ -25,7 +25,7 @@ describe("Usage Routes", () => {
     });
 
     const response = await request(app)
-      .get("/api/usage/ai/summary")
+      .get("/api/v1/usage/ai/summary")
       .set("Authorization", `Bearer ${accessToken}`);
 
     expect(response.status).toBe(403);

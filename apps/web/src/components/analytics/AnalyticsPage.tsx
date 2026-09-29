@@ -18,16 +18,16 @@ import {
 import type { AgentRunLite, AgentRunsSummaryResponse } from "@/types/agentic";
 import type { KnowledgeSource } from "@/types/knowledge";
 import { formatRelativeTime } from "@/lib/format";
+import { EmptyState, SectionMark } from "../ui/EmptyState";
+import { Button } from "../ui/button";
+import { useRouter } from "next/navigation";
 
 const dateRanges = [
   { label: "Last 7 days", days: 7 },
   { label: "Last 30 days", days: 30 },
 ];
 
-// The backend caps listAgentRuns at 100 rows per request, so every
-// range-scoped stat here is computed from "up to the most recent 100 runs
-// within the range" rather than a true aggregate. Noted inline wherever it
-// could matter (e.g. the trend chart truncation notice).
+
 const RUNS_FETCH_LIMIT = 100;
 
 type CustomTooltipProps = {
@@ -39,13 +39,13 @@ type CustomTooltipProps = {
 const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-[#1E293B] border border-[#334155] rounded-lg px-3 py-2 text-xs">
-        <div className="text-slate-400 mb-1">{label}</div>
+      <div className="bg-muted border border-border rounded-lg px-3 py-2 text-xs">
+        <div className="text-muted-foreground mb-1">{label}</div>
         {payload.map((p, i) => (
           <div key={i} className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full" style={{ background: p.color }} />
-            <span className="text-slate-300">
-              {p.name}: <span className="font-mono font-medium text-slate-100">{p.value}</span>
+            <span className="text-foreground/80">
+              {p.name}: <span className="font-mono font-medium text-foreground">{p.value}</span>
             </span>
           </div>
         ))}
@@ -102,6 +102,7 @@ type AnalyticsData = {
 };
 
 export function AnalyticsPage() {
+  const router = useRouter();
   const [rangeDays, setRangeDays] = useState(7);
   const [showDateMenu, setShowDateMenu] = useState(false);
   const [data, setData] = useState<AnalyticsData | null>(null);
@@ -141,7 +142,7 @@ export function AnalyticsPage() {
   if (loading && !data) {
     return (
       <div className="flex items-center justify-center h-full min-h-[60vh]">
-        <Loader2 className="w-5 h-5 text-slate-600 animate-spin" />
+        <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
       </div>
     );
   }
@@ -150,10 +151,10 @@ export function AnalyticsPage() {
     return (
       <div className="flex items-center justify-center h-full min-h-[60vh] text-center px-6">
         <div>
-          <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-3" />
-          <div className="text-sm text-red-400 mb-3">{error || "Something went wrong."}</div>
+          <AlertCircle className="w-8 h-8 text-red-700 mx-auto mb-3" />
+          <div className="text-sm text-red-700 mb-3">{error || "Something went wrong."}</div>
           <button
-            className="px-3 py-1.5 rounded-lg bg-cyan-400/10 text-cyan-400 hover:bg-cyan-400/20 text-xs"
+            className="px-3 py-1.5 rounded-lg bg-brand-soft text-brand hover:bg-brand-soft text-xs"
             onClick={() => load(rangeDays)}
           >
             Retry
@@ -189,35 +190,35 @@ export function AnalyticsPage() {
   const metrics = [
     {
       label: "Total conversations", value: String(totalConversations), sub: "all time",
-      icon: MessageSquare, color: "text-cyan-400", bg: "bg-cyan-400/10 border-cyan-400/20",
+      icon: MessageSquare, color: "text-brand", bg: "bg-brand-soft border-brand/20",
     },
     {
       label: "Grounded answer rate",
       value: groundedPct != null ? `${groundedPct}%` : "—",
       sub: runsInRange.length > 0 ? `${groundedInRange} of ${runsInRange.length} runs` : "no runs in range",
-      icon: CheckCircle, color: "text-emerald-400", bg: "bg-emerald-400/10 border-emerald-400/20",
+      icon: CheckCircle, color: "text-signal", bg: "bg-signal-soft border-signal/20",
     },
     {
       label: "Avg response time",
       value: avgResponseMs != null ? `${(avgResponseMs / 1000).toFixed(1)}s` : "—",
       sub: durations.length > 0 ? `over ${durations.length} runs` : "no data",
-      icon: Clock, color: "text-violet-400", bg: "bg-violet-400/10 border-violet-400/20",
+      icon: Clock, color: "text-stone-700", bg: "bg-stone-100 border-stone-200",
     },
     {
       label: "Agent runs", value: String(runsInRange.length), sub: rangeLabel.toLowerCase(),
-      icon: Activity, color: "text-blue-400", bg: "bg-blue-400/10 border-blue-400/20",
+      icon: Activity, color: "text-sky-700", bg: "bg-sky-50 border-sky-200",
     },
     {
       label: "Run completion rate",
       value: completionPct != null ? `${completionPct}%` : "—",
       sub: totals ? `${totals.completedRuns} of ${totals.totalRuns} runs, all time` : "no data",
-      icon: TrendingUp, color: "text-orange-400", bg: "bg-orange-400/10 border-orange-400/20",
+      icon: TrendingUp, color: "text-orange-700", bg: "bg-orange-50 border-orange-200",
     },
     {
       label: "Tool approval rate",
       value: approvalPct != null ? `${approvalPct}%` : "—",
       sub: toolCalls ? `${toolCalls.executed} executed, ${toolCalls.rejected} rejected` : "no data",
-      icon: CheckSquare, color: "text-slate-400", bg: "bg-slate-400/10 border-slate-400/20",
+      icon: CheckSquare, color: "text-muted-foreground", bg: "bg-muted border-border",
     },
   ];
 
@@ -246,35 +247,39 @@ export function AnalyticsPage() {
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-50">Analytics</h1>
-          <p className="text-sm text-slate-500 mt-0.5">AI activity, knowledge performance, and support insights.</p>
+      <div className="flex items-center justify-between gap-4 border-b border-border pb-6">
+        <div className="flex items-start gap-3 min-w-0">
+          <div className="mt-0.5 hidden sm:block">
+            <SectionMark variant="bars" />
+          </div>
+          <div>
+            <h1 className="font-display text-2xl tracking-tight text-foreground sm:text-3xl">Analytics</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">AI activity, knowledge health, and support insights.</p>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
-            className="flex items-center gap-2 px-3 py-2 bg-[#0F172A] border border-[#334155] rounded-lg text-sm text-slate-300 hover:border-[#475569] transition-colors"
+            className="flex items-center gap-2 px-3 py-2 bg-card border border-border rounded-lg text-sm text-foreground/80 hover:border-[#475569] transition-colors"
             onClick={() => load(rangeDays)}
           >
-            <RefreshCw className="w-4 h-4 text-slate-500" />
+            <RefreshCw className="w-4 h-4 text-muted-foreground" />
           </button>
           <div className="relative">
             <button
               onClick={() => setShowDateMenu(!showDateMenu)}
-              className="flex items-center gap-2 px-3 py-2 bg-[#0F172A] border border-[#334155] rounded-lg text-sm text-slate-300 hover:border-[#475569] transition-colors"
+              className="flex items-center gap-2 px-3 py-2 bg-card border border-border rounded-lg text-sm text-foreground/80 hover:border-[#475569] transition-colors"
             >
-              <BarChart3 className="w-4 h-4 text-slate-500" />
+              <BarChart3 className="w-4 h-4 text-muted-foreground" />
               {rangeLabel}
-              <ChevronDown className="w-4 h-4 text-slate-500" />
+              <ChevronDown className="w-4 h-4 text-muted-foreground" />
             </button>
             {showDateMenu && (
-              <div className="absolute right-0 mt-1 w-40 bg-[#1E293B] border border-[#334155] rounded-xl overflow-hidden z-10 shadow-xl">
+              <div className="absolute right-0 mt-1 w-40 bg-muted border border-border rounded-xl overflow-hidden z-10 shadow-xl">
                 {dateRanges.map((r) => (
                   <button
                     key={r.label}
                     onClick={() => { setRangeDays(r.days); setShowDateMenu(false); }}
-                    className={`w-full text-left px-3 py-2 text-sm transition-colors ${rangeDays === r.days ? "text-cyan-400 bg-cyan-400/10" : "text-slate-400 hover:text-slate-200 hover:bg-[#334155]"}`}
+                    className={`w-full text-left px-3 py-2 text-sm transition-colors ${rangeDays === r.days ? "text-brand bg-brand-soft" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
                   >
                     {r.label}
                   </button>
@@ -288,13 +293,13 @@ export function AnalyticsPage() {
       {/* Metric cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
         {metrics.map(({ label, value, sub, icon: Icon, color, bg }) => (
-          <div key={label} className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-4 hover:border-[#334155] transition-colors">
+          <div key={label} className="bg-card border border-border rounded-xl p-4 hover:border-border transition-colors">
             <div className={`w-7 h-7 rounded-lg border ${bg} flex items-center justify-center mb-3`}>
               <Icon className={`w-3.5 h-3.5 ${color}`} />
             </div>
-            <div className="font-mono text-xl font-bold text-slate-50">{value}</div>
-            <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">{label}</div>
-            <div className="text-[10px] text-slate-600 mt-1.5">{sub}</div>
+            <div className="font-mono text-xl font-bold text-foreground">{value}</div>
+            <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{label}</div>
+            <div className="text-[10px] text-muted-foreground mt-1.5">{sub}</div>
           </div>
         ))}
       </div>
@@ -302,21 +307,31 @@ export function AnalyticsPage() {
       {/* Charts row 1 */}
       <div className="grid lg:grid-cols-3 gap-5">
         {/* Conversations over time */}
-        <div className="lg:col-span-2 bg-[#0F172A] border border-[#1E293B] rounded-xl p-5">
+        <div className="lg:col-span-2 bg-card border border-border rounded-xl p-5">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <div className="text-sm font-semibold text-slate-200">Agent runs over time</div>
-              <div className="text-xs text-slate-500">
+              <div className="text-sm font-semibold text-foreground">Agent runs over time</div>
+              <div className="text-xs text-muted-foreground">
                 Grounded vs total{runsInRange.length >= RUNS_FETCH_LIMIT ? ` · showing most recent ${RUNS_FETCH_LIMIT}` : ""}
               </div>
             </div>
             <div className="flex items-center gap-3 text-[10px]">
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-cyan-400 inline-block" /> Total</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-brand inline-block" /> Total</span>
               <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block" /> Grounded</span>
             </div>
           </div>
           {trendData.length === 0 ? (
-            <div className="h-40 flex items-center justify-center text-xs text-slate-600">No runs in this range yet.</div>
+            <EmptyState
+              compact
+              variant="analytics"
+              title="No runs in this range"
+              description="Ask questions in Chat to populate activity charts."
+              action={
+                <Button size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90 text-xs" onClick={() => router.push("/chat")}>
+                  Ask AI
+                </Button>
+              }
+            />
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <AreaChart data={trendData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
@@ -330,7 +345,7 @@ export function AnalyticsPage() {
                     <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid stroke="#1E293B" strokeDasharray="3 3" vertical={false} />
+                <CartesianGrid stroke="#e4e4df" strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="day" tick={{ fill: "#64748B", fontSize: 10 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: "#64748B", fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip content={<CustomTooltip />} />
@@ -342,11 +357,16 @@ export function AnalyticsPage() {
         </div>
 
         {/* Grounded vs Not */}
-        <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-5">
-          <div className="text-sm font-semibold text-slate-200 mb-1">Grounded answer rate</div>
-          <div className="text-xs text-slate-500 mb-5">{rangeLabel}</div>
+        <div className="bg-card border border-border rounded-xl p-5">
+          <div className="text-sm font-semibold text-foreground mb-1">Grounded answer rate</div>
+          <div className="text-xs text-muted-foreground mb-5">{rangeLabel}</div>
           {runsInRange.length === 0 ? (
-            <div className="h-40 flex items-center justify-center text-xs text-slate-600">No runs in this range yet.</div>
+            <EmptyState
+              compact
+              variant="analytics"
+              title="No grounded data yet"
+              description="Grounding rate appears after your first runs."
+            />
           ) : (
             <div className="flex flex-col items-center">
               <ResponsiveContainer width="100%" height={160}>
@@ -369,14 +389,14 @@ export function AnalyticsPage() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="text-center -mt-2">
-                <div className="font-mono text-3xl font-bold text-emerald-400">{groundedPct}%</div>
-                <div className="text-xs text-slate-500">grounded</div>
+                <div className="font-mono text-3xl font-bold text-signal">{groundedPct}%</div>
+                <div className="text-xs text-muted-foreground">grounded</div>
               </div>
               <div className="flex gap-4 mt-4 text-[11px]">
                 {groundingData.map((d) => (
                   <div key={d.name} className="flex items-center gap-1.5">
                     <div className="w-2.5 h-2.5 rounded-full" style={{ background: d.color }} />
-                    <span className="text-slate-400">{d.name}: <span className="text-slate-300 font-mono">{d.value}</span></span>
+                    <span className="text-muted-foreground">{d.name}: <span className="text-foreground/80 font-mono">{d.value}</span></span>
                   </div>
                 ))}
               </div>
@@ -388,11 +408,21 @@ export function AnalyticsPage() {
       {/* Charts row 2 */}
       <div className="grid lg:grid-cols-2 gap-5">
         {/* Knowledge source health */}
-        <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-5">
-          <div className="text-sm font-semibold text-slate-200 mb-1">Knowledge source health</div>
-          <div className="text-xs text-slate-500 mb-5">{sources.length} total source{sources.length === 1 ? "" : "s"}</div>
+        <div className="bg-card border border-border rounded-xl p-5">
+          <div className="text-sm font-semibold text-foreground mb-1">Knowledge source health</div>
+          <div className="text-xs text-muted-foreground mb-5">{sources.length} total source{sources.length === 1 ? "" : "s"}</div>
           {sources.length === 0 ? (
-            <div className="text-xs text-slate-500 py-8 text-center">No knowledge sources yet.</div>
+            <EmptyState
+              compact
+              variant="knowledge"
+              title="No knowledge sources"
+              description="Upload docs to track source health here."
+              action={
+                <Button size="sm" variant="outline" className="text-xs border-border" onClick={() => router.push("/knowledge")}>
+                  Upload source
+                </Button>
+              }
+            />
           ) : (
             <div className="space-y-3">
               {[
@@ -402,10 +432,10 @@ export function AnalyticsPage() {
               ].map((s) => (
                 <div key={s.label}>
                   <div className="flex justify-between text-xs mb-1">
-                    <span className="text-slate-400">{s.label}</span>
-                    <span className="font-mono text-slate-300">{s.count}</span>
+                    <span className="text-muted-foreground">{s.label}</span>
+                    <span className="font-mono text-foreground/80">{s.count}</span>
                   </div>
-                  <div className="w-full bg-[#1E293B] rounded-full h-1.5">
+                  <div className="w-full bg-muted rounded-full h-1.5">
                     <div
                       className="h-1.5 rounded-full transition-all duration-500"
                       style={{ width: `${sources.length > 0 ? (s.count / sources.length) * 100 : 0}%`, background: s.color }}
@@ -418,15 +448,20 @@ export function AnalyticsPage() {
         </div>
 
         {/* Runs by status */}
-        <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-5">
-          <div className="text-sm font-semibold text-slate-200 mb-1">Agent runs by status</div>
-          <div className="text-xs text-slate-500 mb-5">All time</div>
+        <div className="bg-card border border-border rounded-xl p-5">
+          <div className="text-sm font-semibold text-foreground mb-1">Agent runs by status</div>
+          <div className="text-xs text-muted-foreground mb-5">All time</div>
           {runStatusData.length === 0 || runStatusData.every((r) => r.count === 0) ? (
-            <div className="h-40 flex items-center justify-center text-xs text-slate-600">No runs recorded yet.</div>
+            <EmptyState
+              compact
+              variant="runs"
+              title="No runs recorded"
+              description="Status breakdown fills in as agents execute."
+            />
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={runStatusData} layout="vertical" margin={{ top: 0, right: 0, left: -10, bottom: 0 }}>
-                <CartesianGrid stroke="#1E293B" strokeDasharray="3 3" horizontal={false} />
+                <CartesianGrid stroke="#e4e4df" strokeDasharray="3 3" horizontal={false} />
                 <XAxis type="number" tick={{ fill: "#64748B", fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <YAxis dataKey="status" type="category" tick={{ fill: "#94A3B8", fontSize: 10 }} axisLine={false} tickLine={false} width={80} />
                 <Tooltip content={<CustomTooltip />} />
@@ -438,46 +473,46 @@ export function AnalyticsPage() {
       </div>
 
       {/* Knowledge gaps table */}
-      <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#1E293B]">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div>
-            <div className="text-sm font-semibold text-slate-200">Questions needing better knowledge</div>
-            <div className="text-xs text-slate-500 mt-0.5">
+            <div className="text-sm font-semibold text-foreground">Questions needing better knowledge</div>
+            <div className="text-xs text-muted-foreground mt-0.5">
               Repeated questions where AI could not find a grounded answer, {rangeLabel.toLowerCase()}
             </div>
           </div>
           <a
             href="/knowledge"
-            className="flex items-center gap-1.5 text-xs bg-cyan-400 text-slate-950 font-semibold px-3 py-1.5 rounded-lg hover:bg-cyan-300 transition-colors"
+            className="flex items-center gap-1.5 text-xs bg-brand text-brand-foreground font-semibold px-3 py-1.5 rounded-lg hover:bg-brand/90 transition-colors"
           >
             <Database className="w-3.5 h-3.5" /> Add knowledge
           </a>
         </div>
         {gaps.length === 0 ? (
-          <div className="py-10 text-center text-xs text-slate-500">
+          <div className="py-10 text-center text-xs text-muted-foreground">
             No repeated ungrounded questions in this range — nice.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[#1E293B]">
+                <tr className="border-b border-border">
                   {["Question", "Attempts", "Last asked"].map((h) => (
-                    <th key={h} className="text-left px-5 py-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">{h}</th>
+                    <th key={h} className="text-left px-5 py-3 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#1E293B]">
+              <tbody className="divide-y divide-border">
                 {gaps.map((g, i) => (
-                  <tr key={i} className="hover:bg-[#0B1220] transition-colors">
+                  <tr key={i} className="hover:bg-card transition-colors">
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-2">
-                        <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
-                        <span className="text-slate-300">{g.question}</span>
+                        <AlertCircle className="w-3.5 h-3.5 text-red-700 shrink-0" />
+                        <span className="text-foreground/80">{g.question}</span>
                       </div>
                     </td>
-                    <td className="px-5 py-3 font-mono text-xs text-slate-400">{g.attempts}</td>
-                    <td className="px-5 py-3 text-xs text-slate-500">{formatRelativeTime(g.lastAsked)}</td>
+                    <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{g.attempts}</td>
+                    <td className="px-5 py-3 text-xs text-muted-foreground">{formatRelativeTime(g.lastAsked)}</td>
                   </tr>
                 ))}
               </tbody>

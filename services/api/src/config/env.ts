@@ -23,6 +23,42 @@ const envSchema = z
 
     CORS_ORIGIN: z.string().default("http://localhost:3000"),
 
+    APP_URL: z.url().default("http://localhost:5000"),
+
+    FRONTEND_URL: z.url().default("http://localhost:3000"),
+
+    EMAIL_VERIFICATION_ENABLED: z.coerce.boolean().default(true),
+
+    EMAIL_VERIFICATION_TOKEN_TTL_MINUTES: z.coerce
+      .number()
+      .min(5)
+      .max(1440)
+      .default(60),
+
+    PASSWORD_RESET_TOKEN_TTL_MINUTES: z.coerce
+      .number()
+      .min(5)
+      .max(1440)
+      .default(30),
+
+    ORGANIZATION_INVITE_TOKEN_TTL_HOURS: z.coerce
+      .number()
+      .min(1)
+      .max(168)
+      .default(72),
+
+    SMTP_HOST: z.string().optional().default(""),
+
+    SMTP_PORT: z.coerce.number().min(1).max(65535).default(587),
+
+    SMTP_SECURE: z.coerce.boolean().default(false),
+
+    SMTP_USER: z.string().optional().default(""),
+
+    SMTP_PASS: z.string().optional().default(""),
+
+    EMAIL_FROM: z.string().default("ResolveAI <no-reply@resolveai.local>"),
+
     REQUEST_BODY_LIMIT: z.string().default("10mb"),
 
     MAX_UPLOAD_FILE_SIZE_MB: z.coerce.number().min(1).max(100).default(10),

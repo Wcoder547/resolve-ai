@@ -6,7 +6,8 @@ import {
   askRagQuestion,
   deleteChatConversation,
   getChatConversationById,
-  listChatConversations
+  listChatConversations,
+  streamRagQuestion,
 } from "./chat.service.js";
 
 function handleChatError(error: unknown, res: Response) {
@@ -63,6 +64,64 @@ export async function askQuestionController(
   }
 }
 
+export async function streamAskQuestionController(
+  _req: Request,
+  res: Response,
+) {
+  const req = _req as AuthenticatedRequest;
+  const userId = req.user?.userId;
+
+  if (!userId) {
+    return res.status(401).json({
+      success: false,
+      message: "Unauthorized.",
+    });
+  }
+
+  let input;
+  try {
+    input = askQuestionSchema.parse(req.body);
+  } catch (error) {
+    return handleChatError(error, res);
+  }
+
+  res.status(200);
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const abortController = new AbortController();
+  const onClose = () => abortController.abort();
+  req.on("close", onClose);
+
+  const writeEvent = (event: unknown) => {
+    if (res.writableEnded) return;
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+    const flushable = res as Response & { flush?: () => void };
+    flushable.flush?.();
+  };
+
+  try {
+    for await (const event of streamRagQuestion(userId, input, {
+      signal: abortController.signal,
+    })) {
+      writeEvent(event);
+    }
+  } catch (error) {
+    writeEvent({
+      type: "error",
+      message:
+        error instanceof Error ? error.message : "Internal server error.",
+    });
+  } finally {
+    req.off("close", onClose);
+    if (!res.writableEnded) {
+      res.end();
+    }
+  }
+}
 
 export async function listConversationsController(
   _req: Request,

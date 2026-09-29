@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="640" viewBox="0 0 640 640" fill="none" role="img" aria-label="Empty knowledge folder">
+  <title>Knowledge empty state</title>
+  <defs>
+    <radialGradient id="glow-k" cx="50%" cy="52%" r="42%">
+      <stop offset="0%" stop-color="#FF6A2B" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#FF6A2B" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="320" cy="335" rx="220" ry="180" fill="url(#glow-k)"/>
+  <rect x="158" y="228" width="324" height="226" rx="16" fill="rgba(255,106,43,0.08)" stroke="rgba(255,106,43,0.20)" stroke-width="1.5"/>
+  <path d="M158 262 L158 228 Q158 212 174 212 L258 212 Q272 212 278 224 L292 248 L482 248 Q498 248 498 264 L498 454 Q498 470 482 470 L174 470 Q158 470 158 454 Z" fill="rgba(255,106,43,0.10)" stroke="#FF6A2B" stroke-width="2"/>
+  <rect x="222" y="176" width="96" height="118" rx="10" fill="rgba(255,106,43,0.07)" stroke="rgba(255,106,43,0.20)" stroke-width="1.5"/>
+  <line x1="238" y1="202" x2="302" y2="202" stroke="rgba(255,106,43,0.20)" stroke-width="2" stroke-linecap="round"/>
+  <line x1="238" y1="216" x2="302" y2="216" stroke="rgba(255,106,43,0.16)" stroke-width="2" stroke-linecap="round"/>
+  <line x1="238" y1="230" x2="280" y2="230" stroke="rgba(255,106,43,0.12)" stroke-width="2" stroke-linecap="round"/>
+  <rect x="330" y="168" width="96" height="122" rx="10" fill="rgba(255,106,43,0.10)" stroke="rgba(255,106,43,0.28)" stroke-width="1.5"/>
+  <line x1="346" y1="196" x2="410" y2="196" stroke="rgba(255,106,43,0.28)" stroke-width="2" stroke-linecap="round"/>
+  <line x1="346" y1="210" x2="410" y2="210" stroke="rgba(255,106,43,0.22)" stroke-width="2" stroke-linecap="round"/>
+  <line x1="346" y1="224" x2="388" y2="224" stroke="rgba(255,106,43,0.16)" stroke-width="2" stroke-linecap="round"/>
+  <line x1="200" y1="340" x2="456" y2="340" stroke="rgba(255,106,43,0.10)" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="200" y1="366" x2="416" y2="366" stroke="rgba(255,106,43,0.07)" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="200" y1="392" x2="440" y2="392" stroke="rgba(255,106,43,0.07)" stroke-width="1.5" stroke-linecap="round"/>
+  <circle cx="448" cy="452" r="34" fill="rgba(52,211,153,0.12)" stroke="#34D399" stroke-width="2"/>
+  <line x1="448" y1="436" x2="448" y2="468" stroke="#34D399" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="432" y1="452" x2="464" y2="452" stroke="#34D399" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="192" cy="456" r="6" fill="rgba(52,211,153,0.50)"/>
+  <circle cx="192" cy="456" r="3" fill="#34D399"/>
+</svg>

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 148 40" fill="currentColor" aria-hidden="true">
+  <rect x="2" y="8" width="24" height="24" rx="7"/>
+  <path d="M9 20c0-4 3-7 7-7s7 3 7 7-3 7-7 7" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" class="trust-cut"/>
+  <text x="36" y="26" font-family="ui-sans-serif, system-ui, sans-serif" font-size="16" font-weight="650" letter-spacing="-0.02em">Helix</text>
+</svg>

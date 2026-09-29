@@ -23,7 +23,9 @@ class Settings(BaseSettings):
     openrouter_model: str = "openrouter/free"
 
     groq_api_key: str = ""
-    groq_model: str = "llama-3.1-8b-instant"
+    # Developer-plan default. llama-3.1-8b-instant is Enterprise-only on Groq
+    # and returns 404 for free/dev keys, which triggers slow OpenRouter fallback.
+    groq_model: str = "openai/gpt-oss-20b"
 
     google_api_key: str = ""
     gemini_model: str = "gemini-3-flash-preview"

@@ -1,12 +1,18 @@
 from time import perf_counter
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set, Tuple
 
+from app.providers.base import ModelNotFoundError
 from app.providers.llm_factory import get_llm_provider_chain
 from app.services.rag_answer_quality import extract_json_object
 
 
 class AgentRuntimeError(Exception):
     pass
+
+
+# Process-local: once a (provider, model) 404s, skip it for later agents/requests
+# until the service restarts (avoids 6× Groq 404 spam per chat turn).
+_UNAVAILABLE_MODELS: Set[Tuple[str, str]] = set()
 
 
 def compact_text(value: str, max_chars: int = 4000) -> str:
@@ -90,6 +96,13 @@ def run_json_agent(input_data: Dict[str, Any]) -> Dict[str, Any]:
         provider_name = provider_config["name"]
         model_name = provider_config["model"]
         provider = provider_config["provider"]
+        model_key = (provider_name, model_name)
+
+        if model_key in _UNAVAILABLE_MODELS:
+            provider_errors.append(
+                f"{provider_name}: skipped unavailable model {model_name}"
+            )
+            continue
 
         started_at = perf_counter()
 
@@ -124,7 +137,7 @@ def run_json_agent(input_data: Dict[str, Any]) -> Dict[str, Any]:
                 "step": step,
                 "provider": provider_name,
                 "model": model_name,
-                "fallbackUsed": index > 0,
+                "fallbackUsed": index > 0 or bool(provider_errors),
                 "providerErrors": provider_errors,
             }
 
@@ -132,7 +145,17 @@ def run_json_agent(input_data: Dict[str, Any]) -> Dict[str, Any]:
             latency_ms = int((perf_counter() - started_at) * 1000)
             provider_errors.append(f"{provider_name}: {str(error)}")
 
-            if index == len(provider_chain) - 1:
+            if isinstance(error, ModelNotFoundError):
+                _UNAVAILABLE_MODELS.add(model_key)
+
+            remaining = [
+                p
+                for i, p in enumerate(provider_chain)
+                if i > index
+                and (p["name"], p["model"]) not in _UNAVAILABLE_MODELS
+            ]
+
+            if not remaining:
                 return {
                     "output": {},
                     "step": {
@@ -151,7 +174,7 @@ def run_json_agent(input_data: Dict[str, Any]) -> Dict[str, Any]:
                     },
                     "provider": provider_name,
                     "model": model_name,
-                    "fallbackUsed": index > 0,
+                    "fallbackUsed": index > 0 or bool(provider_errors),
                     "providerErrors": provider_errors,
                 }
 

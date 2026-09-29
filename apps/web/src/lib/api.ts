@@ -1,11 +1,24 @@
-import { getAccessToken } from "@/lib/auth";
+import { getAccessToken, getRefreshToken } from "@/lib/auth";
 
 import type {
+  ChangePasswordResponse,
   CurrentOrganizationResponse,
+  ForgotPasswordResponse,
+  TransferOrganizationResponse,
+  UpdateOrganizationResponse,
+  ListOrganizationInvitesResponse,
+  ListSessionsResponse,
   LoginResponse,
   MeResponse,
   OrganizationMembersResponse,
-  RegisterResponse
+  PreviewOrganizationInviteResponse,
+  UpdateOrganizationMemberResponse,
+  AcceptOrganizationInviteResponse,
+  CreateOrganizationInviteResponse,
+  RegisterResponse,
+  ResendVerificationResponse,
+  ResetPasswordResponse,
+  VerifyEmailResponse
 } from "@/types/auth";
 
 import type {
@@ -29,6 +42,7 @@ import type {
 import type {
   AskChatResponse,
   AskAgenticChatResponse,
+  ChatStreamEvent,
   DeleteChatConversationResponse,
   GetChatConversationResponse,
   ListChatConversationsResponse
@@ -48,6 +62,25 @@ import type {
   AiUsageSummaryResponse,
   ListAiUsageEventsResponse
 } from "@/types/usage";
+
+import type { ListAuditLogsResponse } from "@/types/audit";
+import type {
+  ListAiProvidersResponse,
+  NotificationPreferencesResponse,
+  SetDefaultAiProviderResponse,
+  UpsertAiProviderResponse,
+  AiLlmProvider,
+} from "@/types/settings";
+
+import type {
+  CreateTicketPayload,
+  CreateTicketResponse,
+  GetTicketResponse,
+  ListTicketsParams,
+  ListTicketsResponse,
+  UpdateTicketPayload,
+  UpdateTicketResponse,
+} from "@/types/tickets";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -69,11 +102,22 @@ type RegisterPayload = {
 
 export class ApiError extends Error {
   status: number;
+  code?: string;
+  errors?: Record<string, string[] | undefined>;
 
-  constructor(message: string, status: number) {
+  constructor(
+    message: string,
+    status: number,
+    options?: {
+      code?: string;
+      errors?: Record<string, string[] | undefined>;
+    },
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = options?.code;
+    this.errors = options?.errors;
   }
 }
 
@@ -83,7 +127,8 @@ export class RateLimitError extends ApiError {
   constructor(retryAfterSeconds: number, message?: string) {
     super(
       message || `Rate limited. Try again in ${retryAfterSeconds}s.`,
-      429
+      429,
+      { code: "RATE_LIMITED" },
     );
     this.name = "RateLimitError";
     this.retryAfterSeconds = retryAfterSeconds;
@@ -113,7 +158,11 @@ async function request<TResponse>(
   }
 
   if (!response.ok) {
-    const errorBody = data as { message?: string } | null;
+    const errorBody = data as {
+      message?: string;
+      code?: string;
+      errors?: Record<string, string[] | undefined>;
+    } | null;
     if (response.status === 429) {
       const retryAfterHeader = response.headers.get("retry-after");
       const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : NaN;
@@ -122,7 +171,14 @@ async function request<TResponse>(
         errorBody?.message
       );
     }
-    throw new ApiError(errorBody?.message || "Something went wrong.", response.status);
+    throw new ApiError(
+      errorBody?.message || "Something went wrong.",
+      response.status,
+      {
+        code: errorBody?.code,
+        errors: errorBody?.errors,
+      },
+    );
   }
 
   return data as TResponse;
@@ -157,8 +213,117 @@ export function getCurrentUser() {
   });
 }
 
+export function verifyEmail(token: string) {
+  return request<VerifyEmailResponse>("/api/v1/auth/verify-email", {
+    method: "POST",
+    body: JSON.stringify({ token })
+  });
+}
+
+export function resendEmailVerification(email?: string) {
+  const token = getAccessToken();
+
+  return request<ResendVerificationResponse>("/api/v1/auth/resend-verification", {
+    method: "POST",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(email ? { email } : {}),
+  });
+}
+
+export function forgotPassword(email: string) {
+  return request<ForgotPasswordResponse>("/api/v1/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email })
+  });
+}
+
+export function resetPassword(token: string, password: string) {
+  return request<ResetPasswordResponse>("/api/v1/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ token, password })
+  });
+}
+
+export function changePassword(currentPassword: string, newPassword: string) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<ChangePasswordResponse>("/api/v1/auth/change-password", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({ currentPassword, newPassword })
+  });
+}
+
+export function listSessions() {
+  const token = getAccessToken();
+  const refreshToken = getRefreshToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<ListSessionsResponse>("/api/v1/auth/sessions", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(refreshToken ? { "X-Refresh-Token": refreshToken } : {})
+    }
+  });
+}
+
+export function revokeSession(sessionId: string) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<{ success: boolean; message: string }>(
+    `/api/v1/auth/sessions/${sessionId}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
+}
+
+export function revokeOtherSessions() {
+  const token = getAccessToken();
+  const refreshToken = getRefreshToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  if (!refreshToken) {
+    throw new Error("No refresh token found.");
+  }
+
+  return request<{ success: boolean; message: string }>(
+    "/api/v1/auth/sessions/revoke-others",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ refreshToken })
+    }
+  );
+}
+
 export function logoutUser() {
   const token = getAccessToken();
+  const refreshToken = getRefreshToken();
 
   if (!token) {
     return Promise.resolve({
@@ -171,7 +336,8 @@ export function logoutUser() {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`
-    }
+    },
+    body: JSON.stringify(refreshToken ? { refreshToken } : {})
   });
 }
 
@@ -191,6 +357,54 @@ export function getCurrentOrganization() {
   });
 }
 
+export function updateOrganization(payload: { name?: string; slug?: string }) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<UpdateOrganizationResponse>("/api/v1/organizations/current", {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+export function transferOrganization(memberId: string) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<TransferOrganizationResponse>("/api/v1/organizations/current/transfer", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({ memberId })
+  });
+}
+
+export function deleteOrganization(confirmName: string) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<{ success: boolean; message: string }>("/api/v1/organizations/current", {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({ confirmName })
+  });
+}
+
 export function getOrganizationMembers() {
   const token = getAccessToken();
 
@@ -204,6 +418,136 @@ export function getOrganizationMembers() {
       Authorization: `Bearer ${token}`
     }
   });
+}
+
+export function updateOrganizationMember(
+  memberId: string,
+  role: "ADMIN" | "SUPPORT_AGENT" | "DEVELOPER" | "VIEWER"
+) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<UpdateOrganizationMemberResponse>(
+    `/api/v1/organizations/members/${memberId}`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ role })
+    }
+  );
+}
+
+export function removeOrganizationMember(memberId: string) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<{ success: boolean; message: string }>(
+    `/api/v1/organizations/members/${memberId}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
+}
+
+export function listOrganizationInvites() {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<ListOrganizationInvitesResponse>("/api/v1/organizations/invites", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+}
+
+export function createOrganizationInvite(payload: {
+  email: string;
+  role: "ADMIN" | "SUPPORT_AGENT" | "DEVELOPER" | "VIEWER";
+}) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<CreateOrganizationInviteResponse>("/api/v1/organizations/invites", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+export function resendOrganizationInvite(inviteId: string) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<CreateOrganizationInviteResponse>(
+    `/api/v1/organizations/invites/${inviteId}/resend`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
+}
+
+export function revokeOrganizationInvite(inviteId: string) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<{ success: boolean; message: string }>(
+    `/api/v1/organizations/invites/${inviteId}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
+}
+
+export function previewOrganizationInvite(token: string) {
+  return request<PreviewOrganizationInviteResponse>(
+    `/api/v1/organizations/invites/preview?token=${encodeURIComponent(token)}`
+  );
+}
+
+export function acceptOrganizationInvite(payload: {
+  token: string;
+  name?: string;
+  password?: string;
+}) {
+  return request<AcceptOrganizationInviteResponse>(
+    "/api/v1/organizations/invites/accept",
+    {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }
+  );
 }
 
 
@@ -355,6 +699,130 @@ export function askChatQuestion(
       limit
     })
   });
+}
+
+function consumeSseJsonEvents(buffer: string): {
+  events: unknown[];
+  rest: string;
+} {
+  const events: unknown[] = [];
+  const parts = buffer.split("\n\n");
+  const rest = parts.pop() ?? "";
+
+  for (const part of parts) {
+    const dataLines = part
+      .split("\n")
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart());
+
+    if (dataLines.length === 0) continue;
+
+    const raw = dataLines.join("\n");
+    if (!raw || raw === "[DONE]") continue;
+
+    try {
+      events.push(JSON.parse(raw));
+    } catch {
+      // Wait for a complete SSE frame.
+    }
+  }
+
+  return { events, rest };
+}
+
+export async function streamChatQuestion(
+  question: string,
+  conversationId: string | null | undefined,
+  onEvent: (event: ChatStreamEvent) => void,
+  limit = 5,
+): Promise<AskChatResponse["data"]> {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  const response = await fetch(`${API_URL}/api/v1/chat/ask/stream`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      question,
+      conversationId: conversationId || undefined,
+      limit,
+    }),
+  });
+
+  if (!response.ok) {
+    let message = "Something went wrong.";
+    try {
+      const errorBody = (await response.json()) as { message?: string };
+      if (errorBody?.message) message = errorBody.message;
+    } catch {
+      // Keep the default message when the body is not JSON.
+    }
+    if (response.status === 429) {
+      const retryAfterHeader = response.headers.get("retry-after");
+      const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : NaN;
+      throw new RateLimitError(
+        Number.isFinite(retryAfterSeconds) ? retryAfterSeconds : 60,
+        message,
+      );
+    }
+    throw new ApiError(message, response.status);
+  }
+
+  if (!response.body) {
+    throw new Error("Chat stream returned an empty body.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let doneData: AskChatResponse["data"] | null = null;
+  let streamError: string | null = null;
+
+  const handleEvent = (event: ChatStreamEvent) => {
+    onEvent(event);
+    if (event.type === "done") {
+      doneData = event.data;
+    }
+    if (event.type === "error") {
+      streamError = event.message;
+    }
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const consumed = consumeSseJsonEvents(buffer);
+    buffer = consumed.rest;
+
+    for (const event of consumed.events) {
+      handleEvent(event as ChatStreamEvent);
+    }
+  }
+
+  buffer += decoder.decode();
+  const remaining = consumeSseJsonEvents(`${buffer}\n\n`);
+  for (const event of remaining.events) {
+    handleEvent(event as ChatStreamEvent);
+  }
+
+  if (streamError && !doneData) {
+    throw new Error(streamError);
+  }
+
+  if (!doneData) {
+    throw new Error("Chat stream ended without an answer.");
+  }
+
+  return doneData;
 }
 
 // Same payload as askChatQuestion, but hits the agentic endpoint — this is
@@ -679,4 +1147,246 @@ export function listAiUsageEvents(limit = 20) {
       }
     }
   );
+}
+
+export function listAuditLogs(limit = 50) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<ListAuditLogsResponse>(
+    `/api/v1/organizations/audit-logs?limit=${limit}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
+}
+
+export function listAiProviders() {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<ListAiProvidersResponse>("/api/v1/organizations/ai-providers", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+}
+
+export function upsertAiProvider(
+  provider: AiLlmProvider,
+  payload: { apiKey?: string; model?: string }
+) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<UpsertAiProviderResponse>(
+    `/api/v1/organizations/ai-providers/${provider}`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    }
+  );
+}
+
+export function setDefaultAiProvider(provider: AiLlmProvider) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<SetDefaultAiProviderResponse>(
+    `/api/v1/organizations/ai-providers/${provider}/default`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
+}
+
+export function testAiProvider(provider: AiLlmProvider) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<UpsertAiProviderResponse>(
+    `/api/v1/organizations/ai-providers/${provider}/test`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
+}
+
+export function deleteAiProvider(provider: AiLlmProvider) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<{ success: boolean; message: string }>(
+    `/api/v1/organizations/ai-providers/${provider}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
+}
+
+export function listNotificationPreferences() {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<NotificationPreferencesResponse>(
+    "/api/v1/organizations/notification-preferences",
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
+}
+
+export function updateNotificationPreferences(
+  preferences: Array<{
+    eventKey: string;
+    emailEnabled: boolean;
+    slackEnabled: boolean;
+  }>
+) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<NotificationPreferencesResponse>(
+    "/api/v1/organizations/notification-preferences",
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ preferences })
+    }
+  );
+}
+
+export function updateOrganizationPlan(plan: "FREE" | "PRO" | "TEAM") {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<UpdateOrganizationResponse>("/api/v1/organizations/current/plan", {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({ plan })
+  });
+}
+
+export function listTickets(params: ListTicketsParams = {}) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  const searchParams = new URLSearchParams();
+  if (params.status) searchParams.set("status", params.status);
+  if (params.priority) searchParams.set("priority", params.priority);
+  if (params.assigneeId) searchParams.set("assigneeId", params.assigneeId);
+  if (params.search) searchParams.set("search", params.search);
+  if (params.limit) searchParams.set("limit", String(params.limit));
+
+  const query = searchParams.toString();
+
+  return request<ListTicketsResponse>(
+    `/api/v1/tickets${query ? `?${query}` : ""}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
+}
+
+export function getTicket(ticketId: string) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<GetTicketResponse>(`/api/v1/tickets/${ticketId}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+}
+
+export function createTicket(payload: CreateTicketPayload) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<CreateTicketResponse>("/api/v1/tickets", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+export function updateTicket(ticketId: string, payload: UpdateTicketPayload) {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error("No access token found.");
+  }
+
+  return request<UpdateTicketResponse>(`/api/v1/tickets/${ticketId}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify(payload)
+  });
 }

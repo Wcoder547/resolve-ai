@@ -17,6 +17,7 @@ export const logger = pino({
     paths: [
       "req.headers.authorization",
       "req.headers.cookie",
+      "req.headers.x-refresh-token",
       "res.headers.set-cookie",
       "password",
       "passwordHash",
@@ -25,7 +26,9 @@ export const logger = pino({
       "*.password",
       "*.passwordHash",
       "*.refreshToken",
-      "*.accessToken"
+      "*.accessToken",
+      "*.apiKey",
+      "apiKey"
     ],
     censor: "[REDACTED]"
   }

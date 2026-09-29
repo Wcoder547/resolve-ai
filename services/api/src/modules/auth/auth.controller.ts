@@ -1,50 +1,26 @@
 import type { Request, Response } from "express";
-import { z } from "zod";
 import type { AuthenticatedRequest } from "../../middleware/auth.middleware.js";
 import {
+  changePassword,
   getCurrentUser,
+  listUserSessions,
   loginUser,
   logoutAllUserSessions,
   logoutUser,
   refreshUserToken,
-  registerUser
+  registerUser,
+  revokeOtherUserSessions,
+  revokeUserSession,
 } from "./auth.service.js";
 import {
+  changePasswordSchema,
   loginSchema,
   logoutSchema,
   refreshSchema,
-  registerSchema
+  registerSchema,
+  revokeSessionSchema,
 } from "./auth.validation.js";
-
-function handleAuthError(error: unknown, res: Response) {
-  if (error instanceof z.ZodError) {
-    return res.status(400).json({
-      success: false,
-      message: "Validation failed.",
-      errors: error.flatten().fieldErrors
-    });
-  }
-
-  if (error instanceof Error) {
-    if (error.name === "ConflictError") {
-      return res.status(409).json({ success: false, message: error.message });
-    }
-    if (error.name === "UnauthorizedError") {
-      return res.status(401).json({ success: false, message: error.message });
-    }
-    if (error.name === "NotFoundError") {
-      return res.status(404).json({ success: false, message: error.message });
-    }
-  }
-
-  console.error(error);
-
-  return res.status(500).json({
-    success: false,
-    message: "Internal server error."
-  });
-}
-
+import { handleAuthHttpError } from "./auth-error.js";
 
 export async function registerController(req: Request, res: Response) {
   try {
@@ -53,11 +29,12 @@ export async function registerController(req: Request, res: Response) {
 
     return res.status(201).json({
       success: true,
-      message: "User registered successfully.",
-      data: result
+      message:
+        "Account created successfully. Please verify your email before signing in.",
+      data: result,
     });
   } catch (error) {
-    return handleAuthError(error, res);
+    return handleAuthHttpError(error, res);
   }
 }
 
@@ -68,11 +45,11 @@ export async function loginController(req: Request, res: Response) {
 
     return res.json({
       success: true,
-      message: "User logged in successfully.",
-      data: result
+      message: "Signed in successfully.",
+      data: result,
     });
   } catch (error) {
-    return handleAuthError(error, res);
+    return handleAuthHttpError(error, res);
   }
 }
 
@@ -84,13 +61,12 @@ export async function refreshTokenController(req: Request, res: Response) {
     return res.json({
       success: true,
       message: "Token refreshed successfully.",
-      data: result
+      data: result,
     });
   } catch (error) {
-    return handleAuthError(error, res);
+    return handleAuthHttpError(error, res);
   }
 }
-
 
 export async function getMeController(req: Request, res: Response) {
   const authReq = req as AuthenticatedRequest;
@@ -98,14 +74,18 @@ export async function getMeController(req: Request, res: Response) {
     const userId = authReq.user?.userId;
 
     if (!userId) {
-      return res.status(401).json({ success: false, message: "Unauthorized." });
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+        code: "UNAUTHORIZED",
+      });
     }
 
     const result = await getCurrentUser(userId);
 
     return res.json({ success: true, data: result });
   } catch (error) {
-    return handleAuthError(error, res);
+    return handleAuthHttpError(error, res);
   }
 }
 
@@ -115,15 +95,24 @@ export async function logoutController(req: Request, res: Response) {
     const userId = authReq.user?.userId;
 
     if (!userId) {
-      return res.status(401).json({ success: false, message: "Unauthorized." });
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+        code: "UNAUTHORIZED",
+      });
     }
 
     const input = logoutSchema.parse(req.body || {});
     await logoutUser(userId, input);
 
-    return res.json({ success: true, message: "Logged out successfully." });
+    return res.json({
+      success: true,
+      message: input.refreshToken
+        ? "Logged out successfully."
+        : "Logged out from all sessions successfully.",
+    });
   } catch (error) {
-    return handleAuthError(error, res);
+    return handleAuthHttpError(error, res);
   }
 }
 
@@ -133,16 +122,138 @@ export async function logoutAllController(req: Request, res: Response) {
     const userId = authReq.user?.userId;
 
     if (!userId) {
-      return res.status(401).json({ success: false, message: "Unauthorized." });
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+        code: "UNAUTHORIZED",
+      });
     }
 
     await logoutAllUserSessions(userId);
 
     return res.json({
       success: true,
-      message: "Logged out from all sessions successfully."
+      message: "Logged out from all sessions successfully.",
     });
   } catch (error) {
-    return handleAuthError(error, res);
+    return handleAuthHttpError(error, res);
+  }
+}
+
+export async function changePasswordController(req: Request, res: Response) {
+  const authReq = req as AuthenticatedRequest;
+  try {
+    const userId = authReq.user?.id || authReq.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    const input = changePasswordSchema.parse(req.body);
+    const result = await changePassword(userId, input);
+
+    return res.json({
+      success: true,
+      message: "Password changed successfully. Please sign in again on other devices.",
+      data: result,
+    });
+  } catch (error) {
+    return handleAuthHttpError(error, res);
+  }
+}
+
+export async function listSessionsController(req: Request, res: Response) {
+  const authReq = req as AuthenticatedRequest;
+  try {
+    const userId = authReq.user?.id || authReq.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    const currentRefreshToken =
+      typeof req.headers["x-refresh-token"] === "string"
+        ? req.headers["x-refresh-token"]
+        : undefined;
+
+    const result = await listUserSessions(userId, currentRefreshToken);
+
+    return res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    return handleAuthHttpError(error, res);
+  }
+}
+
+export async function revokeSessionController(req: Request, res: Response) {
+  const authReq = req as AuthenticatedRequest;
+  try {
+    const userId = authReq.user?.id || authReq.user?.userId;
+    const sessionId = Array.isArray(req.params.sessionId)
+      ? req.params.sessionId[0]
+      : req.params.sessionId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    if (!sessionId) {
+      return res.status(400).json({
+        success: false,
+        message: "Session id is required.",
+        code: "VALIDATION_ERROR",
+      });
+    }
+
+    await revokeUserSession(userId, sessionId);
+
+    return res.json({
+      success: true,
+      message: "Session revoked successfully.",
+    });
+  } catch (error) {
+    return handleAuthHttpError(error, res);
+  }
+}
+
+export async function revokeOtherSessionsController(
+  req: Request,
+  res: Response,
+) {
+  const authReq = req as AuthenticatedRequest;
+  try {
+    const userId = authReq.user?.id || authReq.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    const input = revokeSessionSchema.parse(req.body || {});
+    await revokeOtherUserSessions(userId, input.refreshToken);
+
+    return res.json({
+      success: true,
+      message: "Other sessions have been revoked.",
+    });
+  } catch (error) {
+    return handleAuthHttpError(error, res);
   }
 }

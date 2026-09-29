@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 132 40" fill="currentColor" aria-hidden="true">
+  <circle cx="16" cy="20" r="11" fill="none" stroke="currentColor" stroke-width="2.2"/>
+  <circle cx="16" cy="20" r="3.5"/>
+  <circle cx="24.5" cy="12.5" r="2.2"/>
+  <text x="36" y="26" font-family="ui-sans-serif, system-ui, sans-serif" font-size="16" font-weight="650" letter-spacing="-0.02em">Orbit</text>
+</svg>

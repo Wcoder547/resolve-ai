@@ -77,17 +77,17 @@ export function AgentToolApprovals() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold text-slate-950">
+          <h1 className="text-3xl font-semibold text-brand-foreground">
             Tool Approvals
           </h1>
-          <p className="mt-1 text-sm text-slate-600">
+          <p className="mt-1 text-sm text-muted-foreground">
             Review approval-required agent tool calls before execution.
           </p>
         </div>
 
         <button
           onClick={loadPendingToolCalls}
-          className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium"
+          className="rounded-xl border border-border px-4 py-2 text-sm font-medium"
         >
           Refresh
         </button>
@@ -100,13 +100,13 @@ export function AgentToolApprovals() {
       ) : null}
 
       {loading ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
+        <div className="rounded-2xl border border-border bg-white p-10 text-center text-sm text-muted-foreground">
           Loading pending tool calls...
         </div>
       ) : null}
 
       {!loading && toolCalls.length === 0 ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
+        <div className="rounded-2xl border border-border bg-white p-10 text-center text-sm text-muted-foreground">
           No pending tool approvals.
         </div>
       ) : null}
@@ -115,21 +115,21 @@ export function AgentToolApprovals() {
         {toolCalls.map((toolCall) => (
           <div
             key={toolCall.id}
-            className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+            className="rounded-2xl border border-border bg-white p-6 shadow-sm"
           >
             <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h2 className="text-lg font-semibold text-slate-950">
+                <h2 className="text-lg font-semibold text-brand-foreground">
                   {toolCall.toolName}
                 </h2>
-                <p className="mt-1 text-sm text-slate-600">
+                <p className="mt-1 text-sm text-muted-foreground">
                   {toolCall.reason || "No reason provided."}
                 </p>
-                <p className="mt-2 text-xs text-slate-500">
+                <p className="mt-2 text-xs text-muted-foreground">
                   Agent Run:{" "}
                   <a
                     href={`/dashboard/agent/runs/${toolCall.agentRun.id}`}
-                    className="font-medium text-slate-950 underline"
+                    className="font-medium text-brand-foreground underline"
                   >
                     {toolCall.agentRun.id}
                   </a>
@@ -142,25 +142,25 @@ export function AgentToolApprovals() {
               </div>
             </div>
 
-            <div className="mb-5 rounded-xl bg-slate-50 p-4">
-              <p className="text-xs font-medium uppercase text-slate-500">
+            <div className="mb-5 rounded-xl bg-muted p-4">
+              <p className="text-xs font-medium uppercase text-muted-foreground">
                 Original Question
               </p>
-              <p className="mt-2 text-sm leading-6 text-slate-800">
+              <p className="mt-2 text-sm leading-6 text-foreground/80">
                 {toolCall.agentRun.question}
               </p>
             </div>
 
             <div className="grid gap-5 lg:grid-cols-2">
               <div>
-                <h3 className="mb-2 text-sm font-semibold text-slate-900">
+                <h3 className="mb-2 text-sm font-semibold text-foreground">
                   Tool Input
                 </h3>
                 <JsonBlock data={toolCall.input || {}} />
               </div>
 
               <div>
-                <h3 className="mb-2 text-sm font-semibold text-slate-900">
+                <h3 className="mb-2 text-sm font-semibold text-foreground">
                   Current Output
                 </h3>
                 <JsonBlock data={toolCall.output || {}} />
@@ -168,7 +168,7 @@ export function AgentToolApprovals() {
             </div>
 
             <div className="mt-5">
-              <label className="mb-2 block text-sm font-medium text-slate-700">
+              <label className="mb-2 block text-sm font-medium text-muted-foreground">
                 Rejection reason
               </label>
               <textarea
@@ -180,7 +180,7 @@ export function AgentToolApprovals() {
                   }))
                 }
                 rows={2}
-                className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-900"
+                className="w-full rounded-xl border border-border px-4 py-3 text-sm outline-none focus:border-slate-900"
                 placeholder="Optional reason if rejecting..."
               />
             </div>
@@ -189,7 +189,7 @@ export function AgentToolApprovals() {
               <button
                 onClick={() => approveToolCall(toolCall.id || "")}
                 disabled={actionLoadingId === toolCall.id}
-                className="rounded-xl bg-green-700 px-5 py-3 text-sm font-medium text-white disabled:opacity-50"
+                className="rounded-xl bg-green-700 px-5 py-3 text-sm font-medium text-foreground disabled:opacity-50"
               >
                 {actionLoadingId === toolCall.id ? "Approving..." : "Approve & Execute"}
               </button>
@@ -197,7 +197,7 @@ export function AgentToolApprovals() {
               <button
                 onClick={() => rejectToolCall(toolCall.id || "")}
                 disabled={actionLoadingId === toolCall.id}
-                className="rounded-xl bg-red-700 px-5 py-3 text-sm font-medium text-white disabled:opacity-50"
+                className="rounded-xl bg-red-700 px-5 py-3 text-sm font-medium text-foreground disabled:opacity-50"
               >
                 {actionLoadingId === toolCall.id ? "Rejecting..." : "Reject"}
               </button>

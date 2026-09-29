@@ -2,7 +2,11 @@ import { Prisma } from "@prisma/client";
 import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { searchKnowledgeChunks } from "../knowledge/knowledge.service.js";
-import { callAIRagChatService } from "./chat.ai-client.js";
+import {
+  callAIRagChatService,
+  callAIRagChatStream,
+  type RagChatResult,
+} from "./chat.ai-client.js";
 import type { AskQuestionInput } from "./chat.validation.js";
 
 import {
@@ -300,7 +304,7 @@ async function contextualizeQuestion(input: {
   }
 }
 
-export async function askRagQuestion(userId: string, input: AskQuestionInput) {
+async function setupRagAsk(userId: string, input: AskQuestionInput) {
   const membership = await getPrimaryMembership(userId);
   let conversation = input.conversationId
     ? await prisma.conversation.findFirst({
@@ -364,12 +368,48 @@ export async function askRagQuestion(userId: string, input: AskQuestionInput) {
   );
 
   const topScore = searchResult.chunks[0]?.score ?? 0;
-
   const minimumRetrievalScore = env.HYBRID_SEARCH_ENABLED
     ? env.RAG_MIN_HYBRID_SCORE
     : env.RAG_MIN_RELEVANCE_SCORE;
 
-  if (searchResult.chunks.length === 0 || topScore < minimumRetrievalScore) {
+  return {
+    userId,
+    membership,
+    conversation,
+    conversationHistory,
+    questionContext,
+    retrievalQuery,
+    searchResult,
+    sources: searchResult.chunks.map((chunk) => ({
+      sourceId: chunk.source.id,
+      sourceName: chunk.source.name,
+      documentId: chunk.document.id,
+      documentTitle: chunk.document.title,
+      chunkId: chunk.id,
+      chunkIndex: chunk.chunkIndex,
+      score: chunk.score,
+    })),
+    topScore,
+    hasRelevantContext:
+      searchResult.chunks.length > 0 && topScore >= minimumRetrievalScore,
+    question: input.question,
+  };
+}
+
+export async function askRagQuestion(userId: string, input: AskQuestionInput) {
+  const {
+    membership,
+    conversation,
+    conversationHistory,
+    questionContext,
+    retrievalQuery,
+    searchResult,
+    sources,
+    topScore,
+    hasRelevantContext,
+  } = await setupRagAsk(userId, input);
+
+  if (!hasRelevantContext) {
     const fallbackAnswer = createNoContextAnswer();
 
     const assistantMessage = await prisma.message.create({
@@ -437,28 +477,6 @@ export async function askRagQuestion(userId: string, input: AskQuestionInput) {
       });
     }
 
-    await recordAiUsage({
-      organizationId: membership.organizationId,
-      userId,
-      conversationId: conversation.id,
-      messageId: assistantMessage.id,
-      operation: "rag_chat_answer",
-      provider: aiResponse.data.provider,
-      model: aiResponse.data.model,
-      promptTokens: aiResponse.data.usage.promptTokens,
-      completionTokens: aiResponse.data.usage.completionTokens,
-      totalTokens: aiResponse.data.usage.totalTokens,
-      isEstimated: aiResponse.data.usage.isEstimated,
-      metadata: {
-        grounded: aiResponse.data.grounded,
-        confidence: aiResponse.data.confidence,
-        citationCount: aiResponse.data.citations.length,
-        promptVersion: aiResponse.data.promptVersion,
-        retrievalMode: searchResult.retrievalMode,
-        topScore,
-      },
-    });
-
     await writeChatAuditLog({
       userId,
       organizationId: membership.organizationId,
@@ -490,16 +508,6 @@ export async function askRagQuestion(userId: string, input: AskQuestionInput) {
       providerErrors: [],
     };
   }
-
-  const sources = searchResult.chunks.map((chunk) => ({
-    sourceId: chunk.source.id,
-    sourceName: chunk.source.name,
-    documentId: chunk.document.id,
-    documentTitle: chunk.document.title,
-    chunkId: chunk.id,
-    chunkIndex: chunk.chunkIndex,
-    score: chunk.score,
-  }));
 
   try {
     const aiResponse = await callAIRagChatService({
@@ -533,6 +541,7 @@ export async function askRagQuestion(userId: string, input: AskQuestionInput) {
         content: aiResponse.data.answer,
         sources: sources as Prisma.InputJsonValue,
         metadata: {
+          mode: "rag",
           model: aiResponse.data.model,
           provider: aiResponse.data.provider,
           grounded: aiResponse.data.grounded,
@@ -676,6 +685,340 @@ export async function askRagQuestion(userId: string, input: AskQuestionInput) {
       retrievalQuery,
     };
   }
+}
+
+export type ChatSseEvent =
+  | { type: "status"; status: "retrieving" | "generating" }
+  | { type: "token"; text: string }
+  | { type: "done"; data: Record<string, unknown> }
+  | { type: "error"; message: string };
+
+export async function* streamRagQuestion(
+  userId: string,
+  input: AskQuestionInput,
+  options?: { signal?: AbortSignal },
+): AsyncGenerator<ChatSseEvent> {
+  yield { type: "status", status: "retrieving" };
+
+  const {
+    membership,
+    conversation,
+    conversationHistory,
+    questionContext,
+    retrievalQuery,
+    searchResult,
+    sources,
+    topScore,
+    hasRelevantContext,
+  } = await setupRagAsk(userId, input);
+
+  if (!hasRelevantContext) {
+    const result = await persistNoContextAnswer({
+      userId,
+      input,
+      membership,
+      conversation,
+      questionContext,
+      retrievalQuery,
+      searchResult,
+      topScore,
+    });
+    yield { type: "token", text: result.answer };
+    yield { type: "done", data: result };
+    return;
+  }
+
+  yield { type: "status", status: "generating" };
+
+  try {
+    let streamedAnswer = "";
+    let aiData: RagChatResult | null = null;
+    let sawDone = false;
+
+    for await (const event of callAIRagChatStream(
+      {
+        question: input.question,
+        standaloneQuestion: questionContext.standaloneQuestion,
+        context: trimContext(searchResult.context),
+        sources,
+        conversationHistory,
+        metadata: {
+          organizationId: membership.organizationId,
+          conversationId: conversation.id,
+          userId,
+          originalQuestion: input.question,
+          standaloneQuestion: questionContext.standaloneQuestion,
+          wasFollowUp: questionContext.wasFollowUp,
+          questionRewrite: questionContext,
+          conversationHistoryMessages: conversationHistory.length,
+          retrievalQuery,
+          retrievalMode: searchResult.retrievalMode,
+          embedding: searchResult.embedding,
+          totalRetrievedChunks: searchResult.chunks.length,
+          topScore,
+        },
+      },
+      { signal: options?.signal },
+    )) {
+      if (event.type === "token") {
+        streamedAnswer += event.text;
+        yield { type: "token", text: event.text };
+        continue;
+      }
+
+      if (event.type === "error") {
+        throw new Error(event.message);
+      }
+
+      if (event.type === "done") {
+        aiData = event.data;
+        sawDone = true;
+      }
+    }
+
+    if (!sawDone || !aiData) {
+      throw new Error("AI service stream ended without a completed answer.");
+    }
+
+    const answer = aiData.answer || streamedAnswer;
+
+    const assistantMessage = await prisma.message.create({
+      data: {
+        organizationId: membership.organizationId,
+        conversationId: conversation.id,
+        role: "ASSISTANT",
+        content: answer,
+        sources: sources as Prisma.InputJsonValue,
+        metadata: {
+          mode: "rag",
+          model: aiData.model,
+          provider: aiData.provider,
+          grounded: aiData.grounded,
+          confidence: aiData.confidence,
+          citations: aiData.citations,
+          needsEscalation: aiData.needsEscalation,
+          escalationReason: aiData.escalationReason,
+          guardrails: aiData.guardrails,
+          promptVersion: aiData.promptVersion,
+          fallbackUsed: aiData.fallbackUsed || false,
+          providerErrors: aiData.providerErrors || [],
+          originalQuestion: input.question,
+          standaloneQuestion: questionContext.standaloneQuestion,
+          wasFollowUp: questionContext.wasFollowUp,
+          questionRewrite: questionContext,
+          conversationHistoryMessages: conversationHistory.length,
+          retrievalQuery,
+          retrievalMode: searchResult.retrievalMode,
+          embedding: searchResult.embedding,
+          totalRetrievedChunks: searchResult.chunks.length,
+          topScore,
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    await writeChatAuditLog({
+      userId,
+      organizationId: membership.organizationId,
+      action: "CHAT_RAG_ANSWER_GENERATED",
+      metadata: {
+        conversationId: conversation.id,
+        messageId: assistantMessage.id,
+        provider: aiData.provider,
+        model: aiData.model,
+        grounded: aiData.grounded,
+        usage: aiData.usage,
+        originalQuestion: input.question,
+        standaloneQuestion: questionContext.standaloneQuestion,
+        wasFollowUp: questionContext.wasFollowUp,
+        questionRewriteConfidence: questionContext.confidence,
+        conversationHistoryMessages: conversationHistory.length,
+        confidence: aiData.confidence,
+        citationCount: aiData.citations.length,
+        needsEscalation: aiData.needsEscalation,
+        guardrailApproved: aiData.guardrails.approved,
+        promptVersion: aiData.promptVersion,
+        fallbackUsed: aiData.fallbackUsed || false,
+        retrievalQuery,
+        totalRetrievedChunks: searchResult.chunks.length,
+        topScore,
+        streamed: true,
+      },
+    });
+
+    yield {
+      type: "done",
+      data: {
+        conversationId: conversation.id,
+        messageId: assistantMessage.id,
+        answer,
+        sources,
+        citations: aiData.citations,
+        retrievedChunks: searchResult.chunks,
+        grounded: aiData.grounded,
+        usage: aiData.usage,
+        confidence: aiData.confidence,
+        needsEscalation: aiData.needsEscalation,
+        escalationReason: aiData.escalationReason,
+        guardrails: aiData.guardrails,
+        promptVersion: aiData.promptVersion,
+        model: aiData.model,
+        provider: aiData.provider,
+        fallbackUsed: aiData.fallbackUsed || false,
+        providerErrors: aiData.providerErrors || [],
+        originalQuestion: input.question,
+        standaloneQuestion: questionContext.standaloneQuestion,
+        wasFollowUp: questionContext.wasFollowUp,
+        questionRewrite: questionContext,
+        conversationHistoryMessages: conversationHistory.length,
+        retrievalQuery,
+        retrievalMode: searchResult.retrievalMode,
+        embedding: searchResult.embedding,
+      },
+    };
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown AI chat error.";
+
+    const fallbackAnswer = [
+      "I found relevant knowledge base context, but the AI service failed while generating the final answer.",
+      "",
+      "Please try again. If the issue continues, check the AI provider configuration or service logs.",
+    ].join("\n");
+
+    const assistantMessage = await prisma.message.create({
+      data: {
+        organizationId: membership.organizationId,
+        conversationId: conversation.id,
+        role: "ASSISTANT",
+        content: fallbackAnswer,
+        sources: sources as Prisma.InputJsonValue,
+        metadata: {
+          grounded: false,
+          reason: "AI_GENERATION_FAILED",
+          error: errorMessage,
+          streamed: true,
+          originalQuestion: input.question,
+          standaloneQuestion: questionContext.standaloneQuestion,
+          wasFollowUp: questionContext.wasFollowUp,
+          questionRewrite: questionContext,
+          conversationHistoryMessages: conversationHistory.length,
+          retrievalQuery,
+          totalRetrievedChunks: searchResult.chunks.length,
+          topScore,
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    await writeChatAuditLog({
+      userId,
+      organizationId: membership.organizationId,
+      action: "CHAT_AI_GENERATION_FAILED",
+      metadata: {
+        conversationId: conversation.id,
+        messageId: assistantMessage.id,
+        error: errorMessage,
+        retrievalQuery,
+        totalRetrievedChunks: searchResult.chunks.length,
+        topScore,
+        streamed: true,
+      },
+    });
+
+    yield { type: "error", message: errorMessage };
+    yield {
+      type: "done",
+      data: {
+        conversationId: conversation.id,
+        messageId: assistantMessage.id,
+        answer: fallbackAnswer,
+        sources,
+        retrievedChunks: searchResult.chunks,
+        grounded: false,
+        model: null,
+        standaloneQuestion: questionContext.standaloneQuestion,
+        wasFollowUp: questionContext.wasFollowUp,
+        questionRewrite: questionContext,
+        conversationHistoryMessages: conversationHistory.length,
+        provider: null,
+        retrievalQuery,
+      },
+    };
+  }
+}
+
+async function persistNoContextAnswer(input: {
+  userId: string;
+  input: AskQuestionInput;
+  membership: Awaited<ReturnType<typeof getPrimaryMembership>>;
+  conversation: { id: string };
+  questionContext: Awaited<ReturnType<typeof contextualizeQuestion>>;
+  retrievalQuery: string;
+  searchResult: Awaited<ReturnType<typeof retrieveRelevantChunks>>["searchResult"];
+  topScore: number;
+}) {
+  const {
+    userId,
+    membership,
+    conversation,
+    questionContext,
+    retrievalQuery,
+    searchResult,
+    topScore,
+  } = input;
+  const fallbackAnswer = createNoContextAnswer();
+
+  const assistantMessage = await prisma.message.create({
+    data: {
+      organizationId: membership.organizationId,
+      conversationId: conversation.id,
+      role: "ASSISTANT",
+      content: fallbackAnswer,
+      sources: [],
+      metadata: {
+        grounded: false,
+        reason: "NO_RELEVANT_CHUNKS_FOUND",
+        originalQuestion: input.input.question,
+        standaloneQuestion: questionContext.standaloneQuestion,
+        wasFollowUp: questionContext.wasFollowUp,
+        questionRewrite: questionContext,
+        conversationHistoryMessages: 0,
+        retrievalQuery,
+        retrievalMode: searchResult.retrievalMode,
+        embedding: searchResult.embedding,
+        topScore,
+      } as Prisma.InputJsonValue,
+    },
+  });
+
+  await writeChatAuditLog({
+    userId,
+    organizationId: membership.organizationId,
+    action: "CHAT_NO_RELEVANT_CONTEXT",
+    metadata: {
+      conversationId: conversation.id,
+      question: input.input.question,
+      retrievalQuery,
+      topScore,
+    },
+  });
+
+  return {
+    conversationId: conversation.id,
+    messageId: assistantMessage.id,
+    answer: fallbackAnswer,
+    sources: [],
+    retrievedChunks: [],
+    grounded: false,
+    model: null,
+    provider: null,
+    retrievalQuery,
+    retrievalMode: searchResult.retrievalMode,
+    embedding: searchResult.embedding,
+    totalRetrievedChunks: searchResult.chunks.length,
+    topScore,
+    fallbackUsed: true,
+    providerErrors: [],
+  };
 }
 
 export async function listChatConversations(userId: string) {

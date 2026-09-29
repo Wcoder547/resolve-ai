@@ -5,3 +5,5 @@ node_modules
 .env.test
 
 /src/generated/prisma
+.env.production.local
+.env.production

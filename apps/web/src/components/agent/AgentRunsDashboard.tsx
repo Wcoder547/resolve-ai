@@ -70,10 +70,10 @@ export function AgentRunsDashboard() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-semibold text-slate-950">
+        <h1 className="text-3xl font-semibold text-brand-foreground">
           Agent Runs
         </h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-muted-foreground">
           Monitor multi-agent executions, tool calls, guardrails, and run status.
         </p>
       </div>
@@ -86,37 +86,37 @@ export function AgentRunsDashboard() {
 
       {summary ? (
         <div className="grid gap-4 md:grid-cols-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">Total Runs</p>
-            <p className="mt-2 text-3xl font-semibold text-slate-950">
+          <div className="rounded-2xl border border-border bg-white p-5 shadow-sm">
+            <p className="text-sm text-muted-foreground">Total Runs</p>
+            <p className="mt-2 text-3xl font-semibold text-brand-foreground">
               {summary.totals.totalRuns}
             </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">Failed Runs</p>
-            <p className="mt-2 text-3xl font-semibold text-slate-950">
+          <div className="rounded-2xl border border-border bg-white p-5 shadow-sm">
+            <p className="text-sm text-muted-foreground">Failed Runs</p>
+            <p className="mt-2 text-3xl font-semibold text-brand-foreground">
               {summary.totals.failedRuns}
             </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">Pending Approvals</p>
-            <p className="mt-2 text-3xl font-semibold text-slate-950">
+          <div className="rounded-2xl border border-border bg-white p-5 shadow-sm">
+            <p className="text-sm text-muted-foreground">Pending Approvals</p>
+            <p className="mt-2 text-3xl font-semibold text-brand-foreground">
               {summary.toolCalls.pendingApproval}
             </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">Avg Duration 24h</p>
-            <p className="mt-2 text-3xl font-semibold text-slate-950">
+          <div className="rounded-2xl border border-border bg-white p-5 shadow-sm">
+            <p className="text-sm text-muted-foreground">Avg Duration 24h</p>
+            <p className="mt-2 text-3xl font-semibold text-brand-foreground">
               {formatDuration(summary.last24Hours.averageDurationMs)}
             </p>
           </div>
         </div>
       ) : null}
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="rounded-2xl border border-border bg-white p-5 shadow-sm">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <select
@@ -125,7 +125,7 @@ export function AgentRunsDashboard() {
                 setStatus(event.target.value);
                 loadData(event.target.value);
               }}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              className="rounded-xl border border-border px-3 py-2 text-sm"
             >
               <option value="">All statuses</option>
               <option value="RUNNING">RUNNING</option>
@@ -138,7 +138,7 @@ export function AgentRunsDashboard() {
 
             <button
               onClick={() => loadData()}
-              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium"
+              className="rounded-xl border border-border px-4 py-2 text-sm font-medium"
             >
               Refresh
             </button>
@@ -146,21 +146,21 @@ export function AgentRunsDashboard() {
 
           <a
             href="/dashboard/agent/approvals"
-            className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-medium text-white"
+            className="rounded-xl bg-background px-4 py-2 text-sm font-medium text-foreground"
           >
             Pending Approvals
           </a>
         </div>
 
         {loading ? (
-          <p className="py-10 text-center text-sm text-slate-500">
+          <p className="py-10 text-center text-sm text-muted-foreground">
             Loading agent runs...
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] text-left text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-xs uppercase text-slate-500">
+                <tr className="border-b border-border text-xs uppercase text-muted-foreground">
                   <th className="px-3 py-3">Question</th>
                   <th className="px-3 py-3">Status</th>
                   <th className="px-3 py-3">Confidence</th>
@@ -176,10 +176,10 @@ export function AgentRunsDashboard() {
                 {runs.map((run) => (
                   <tr key={run.id} className="border-b border-slate-100">
                     <td className="max-w-[360px] px-3 py-4">
-                      <p className="line-clamp-2 font-medium text-slate-900">
+                      <p className="line-clamp-2 font-medium text-foreground">
                         {run.question}
                       </p>
-                      <p className="mt-1 text-xs text-slate-500">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         {new Date(run.createdAt).toLocaleString()}
                       </p>
                     </td>
@@ -196,7 +196,7 @@ export function AgentRunsDashboard() {
                     <td className="px-3 py-4">
                       <a
                         href={`/dashboard/agent/runs/${run.id}`}
-                        className="font-medium text-slate-950 underline"
+                        className="font-medium text-brand-foreground underline"
                       >
                         View
                       </a>
@@ -207,7 +207,7 @@ export function AgentRunsDashboard() {
             </table>
 
             {runs.length === 0 ? (
-              <p className="py-10 text-center text-sm text-slate-500">
+              <p className="py-10 text-center text-sm text-muted-foreground">
                 No agent runs found.
               </p>
             ) : null}

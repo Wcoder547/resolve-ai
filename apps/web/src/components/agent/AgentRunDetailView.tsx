@@ -82,7 +82,7 @@ export function AgentRunDetailView({ agentRunId }: AgentRunDetailViewProps) {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
+      <div className="rounded-2xl border border-border bg-white p-10 text-center text-sm text-muted-foreground">
         Loading agent run...
       </div>
     );
@@ -107,13 +107,13 @@ export function AgentRunDetailView({ agentRunId }: AgentRunDetailViewProps) {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-2xl border border-border bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-950">
+            <h1 className="text-2xl font-semibold text-brand-foreground">
               Agent Run Detail
             </h1>
-            <p className="mt-1 max-w-3xl text-sm text-slate-600">
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
               {detail.question}
             </p>
           </div>
@@ -122,37 +122,37 @@ export function AgentRunDetailView({ agentRunId }: AgentRunDetailViewProps) {
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-4">
-          <div className="rounded-xl bg-slate-50 p-4">
-            <p className="text-xs text-slate-500">Confidence</p>
-            <p className="mt-1 text-sm font-semibold text-slate-900">
+          <div className="rounded-xl bg-muted p-4">
+            <p className="text-xs text-muted-foreground">Confidence</p>
+            <p className="mt-1 text-sm font-semibold text-foreground">
               {detail.confidence || "-"}
             </p>
           </div>
 
-          <div className="rounded-xl bg-slate-50 p-4">
-            <p className="text-xs text-slate-500">Grounded</p>
-            <p className="mt-1 text-sm font-semibold text-slate-900">
+          <div className="rounded-xl bg-muted p-4">
+            <p className="text-xs text-muted-foreground">Grounded</p>
+            <p className="mt-1 text-sm font-semibold text-foreground">
               {detail.grounded ? "Yes" : "No"}
             </p>
           </div>
 
-          <div className="rounded-xl bg-slate-50 p-4">
-            <p className="text-xs text-slate-500">Steps</p>
-            <p className="mt-1 text-sm font-semibold text-slate-900">
+          <div className="rounded-xl bg-muted p-4">
+            <p className="text-xs text-muted-foreground">Steps</p>
+            <p className="mt-1 text-sm font-semibold text-foreground">
               {detail.steps?.length || 0}
             </p>
           </div>
 
-          <div className="rounded-xl bg-slate-50 p-4">
-            <p className="text-xs text-slate-500">Tool Calls</p>
-            <p className="mt-1 text-sm font-semibold text-slate-900">
+          <div className="rounded-xl bg-muted p-4">
+            <p className="text-xs text-muted-foreground">Tool Calls</p>
+            <p className="mt-1 text-sm font-semibold text-foreground">
               {detail.toolCalls?.length || 0}
             </p>
           </div>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+      <div className="rounded-2xl border border-border bg-white p-2 shadow-sm">
         <div className="flex flex-wrap gap-2">
           {tabs.map((tab) => (
             <button
@@ -166,8 +166,8 @@ export function AgentRunDetailView({ agentRunId }: AgentRunDetailViewProps) {
               }}
               className={`rounded-xl px-4 py-2 text-sm font-medium capitalize ${
                 activeTab === tab
-                  ? "bg-slate-950 text-white"
-                  : "text-slate-600 hover:bg-slate-100"
+                  ? "bg-background text-foreground"
+                  : "text-muted-foreground hover:bg-muted"
               }`}
             >
               {tab}
@@ -178,17 +178,17 @@ export function AgentRunDetailView({ agentRunId }: AgentRunDetailViewProps) {
 
       {activeTab === "overview" ? (
         <div className="grid gap-6 lg:grid-cols-2">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="mb-3 text-lg font-semibold text-slate-950">
+          <div className="rounded-2xl border border-border bg-white p-6 shadow-sm">
+            <h2 className="mb-3 text-lg font-semibold text-brand-foreground">
               Final Answer
             </h2>
-            <div className="whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-sm leading-7 text-slate-800">
+            <div className="whitespace-pre-wrap rounded-xl bg-muted p-4 text-sm leading-7 text-foreground/80">
               {detail.answer || "No answer stored."}
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="mb-3 text-lg font-semibold text-slate-950">
+          <div className="rounded-2xl border border-border bg-white p-6 shadow-sm">
+            <h2 className="mb-3 text-lg font-semibold text-brand-foreground">
               Summary
             </h2>
             <JsonBlock
@@ -209,22 +209,22 @@ export function AgentRunDetailView({ agentRunId }: AgentRunDetailViewProps) {
       ) : null}
 
       {activeTab === "timeline" ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-5 text-lg font-semibold text-slate-950">
+        <div className="rounded-2xl border border-border bg-white p-6 shadow-sm">
+          <h2 className="mb-5 text-lg font-semibold text-brand-foreground">
             Execution Timeline
           </h2>
 
           <div className="space-y-4">
             {timeline.map((event, index) => (
               <div key={`${event.type}-${index}`} className="flex gap-4">
-                <div className="mt-1 h-3 w-3 rounded-full bg-slate-950" />
-                <div className="flex-1 rounded-xl border border-slate-200 p-4">
+                <div className="mt-1 h-3 w-3 rounded-full bg-background" />
+                <div className="flex-1 rounded-xl border border-border p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="font-medium text-slate-950">
+                      <p className="font-medium text-brand-foreground">
                         {event.title}
                       </p>
-                      <p className="mt-1 text-xs text-slate-500">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         {new Date(event.timestamp).toLocaleString()}
                       </p>
                     </div>
@@ -246,14 +246,14 @@ export function AgentRunDetailView({ agentRunId }: AgentRunDetailViewProps) {
           {detail.steps.map((step, index) => (
             <div
               key={step.id || `${step.agentName}-${index}`}
-              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+              className="rounded-2xl border border-border bg-white p-6 shadow-sm"
             >
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-950">
+                  <h2 className="text-lg font-semibold text-brand-foreground">
                     {step.agentName}
                   </h2>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-muted-foreground">
                     {step.provider || "-"} / {step.model || "-"} /{" "}
                     {step.latencyMs ?? 0}ms
                   </p>
@@ -276,21 +276,21 @@ export function AgentRunDetailView({ agentRunId }: AgentRunDetailViewProps) {
       {activeTab === "tools" ? (
         <div className="space-y-4">
           {detail.toolCalls.length === 0 ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
+            <div className="rounded-2xl border border-border bg-white p-8 text-center text-sm text-muted-foreground">
               No tool calls for this run.
             </div>
           ) : (
             detail.toolCalls.map((toolCall) => (
               <div
                 key={toolCall.id || toolCall.toolCallId || toolCall.toolName}
-                className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+                className="rounded-2xl border border-border bg-white p-6 shadow-sm"
               >
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-lg font-semibold text-slate-950">
+                    <h2 className="text-lg font-semibold text-brand-foreground">
                       {toolCall.toolName}
                     </h2>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-muted-foreground">
                       {toolCall.toolCategory || "-"} / approval:{" "}
                       {toolCall.approvalStatus}
                     </p>
@@ -306,8 +306,8 @@ export function AgentRunDetailView({ agentRunId }: AgentRunDetailViewProps) {
       ) : null}
 
       {activeTab === "citations" ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold text-slate-950">
+        <div className="rounded-2xl border border-border bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold text-brand-foreground">
             Citations
           </h2>
           <JsonBlock data={detail.citations || []} />
@@ -315,27 +315,27 @@ export function AgentRunDetailView({ agentRunId }: AgentRunDetailViewProps) {
       ) : null}
 
       {activeTab === "debug" ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-2xl border border-border bg-white p-6 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-slate-950">
+              <h2 className="text-lg font-semibold text-brand-foreground">
                 Debug Payload
               </h2>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="mt-1 text-sm text-muted-foreground">
                 Only owner/admin/developer roles should access this.
               </p>
             </div>
 
             <button
               onClick={loadDebug}
-              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium"
+              className="rounded-xl border border-border px-4 py-2 text-sm font-medium"
             >
               Reload
             </button>
           </div>
 
           {debugLoading ? (
-            <p className="text-sm text-slate-500">Loading debug payload...</p>
+            <p className="text-sm text-muted-foreground">Loading debug payload...</p>
           ) : null}
 
           {debugError ? (

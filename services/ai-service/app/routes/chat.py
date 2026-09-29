@@ -1,4 +1,7 @@
+import json
+
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 
 from app.schemas.chat import (
     QuestionRewriteRequest,
@@ -7,7 +10,7 @@ from app.schemas.chat import (
     RagChatResponse,
 )
 from app.services.question_rewriter import rewrite_question_for_rag
-from app.services.rag_chat import generate_rag_answer
+from app.services.rag_chat import generate_rag_answer, stream_rag_answer
 
 router = APIRouter()
 
@@ -46,3 +49,19 @@ def rag_chat(payload: RagChatRequest):
             status_code=500,
             detail=f"RAG chat failed: {str(error)}",
         )
+
+
+@router.post("/chat/rag/stream")
+def rag_chat_stream(payload: RagChatRequest):
+    def event_gen():
+        for event in stream_rag_answer(payload):
+            yield f"data: {json.dumps(event, default=str)}\n\n"
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
+    )

@@ -82,6 +82,10 @@ def rewrite_question_for_rag(payload: QuestionRewriteRequest):
             "model": "none",
             "promptVersion": settings.question_rewrite_prompt_version,
             "fallbackUsed": False,
+            "usage": build_usage(
+                prompt_text=payload.question,
+                completion_text=payload.question,
+            ),
             "providerErrors": [],
         }
 

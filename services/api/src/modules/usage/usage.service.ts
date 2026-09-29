@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
+import { getPlanDefinition, listPlanCatalog } from "./plans.js";
 
 type RecordAiUsageInput = {
   organizationId: string;
@@ -51,6 +52,12 @@ export async function assertOrganizationAiUsageAllowed(organizationId: string) {
     return;
   }
 
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { plan: true },
+  });
+
+  const plan = getPlanDefinition(organization?.plan || "FREE");
   const today = startOfUtcDay();
   const monthStart = startOfUtcMonth();
 
@@ -64,13 +71,13 @@ export async function assertOrganizationAiUsageAllowed(organizationId: string) {
   });
 
   if (dailyUsage) {
-    if (dailyUsage.requestCount >= env.AI_DAILY_REQUEST_LIMIT) {
+    if (dailyUsage.requestCount >= plan.dailyRequestLimit) {
       throw createUsageLimitError(
         "Daily AI request limit reached for this organization."
       );
     }
 
-    if (dailyUsage.totalTokens >= env.AI_DAILY_TOKEN_LIMIT) {
+    if (dailyUsage.totalTokens >= plan.dailyTokenLimit) {
       throw createUsageLimitError(
         "Daily AI token limit reached for this organization."
       );
@@ -91,7 +98,7 @@ export async function assertOrganizationAiUsageAllowed(organizationId: string) {
 
   const monthlyTokens = monthlyUsage._sum.totalTokens || 0;
 
-  if (monthlyTokens >= env.AI_MONTHLY_TOKEN_LIMIT) {
+  if (monthlyTokens >= plan.monthlyTokenLimit) {
     throw createUsageLimitError(
       "Monthly AI token limit reached for this organization."
     );
@@ -177,6 +184,12 @@ export async function recordAiUsage(input: RecordAiUsageInput) {
 }
 
 export async function getOrganizationAiUsageSummary(organizationId: string) {
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { plan: true },
+  });
+
+  const plan = getPlanDefinition(organization?.plan || "FREE");
   const today = startOfUtcDay();
   const monthStart = startOfUtcMonth();
 
@@ -208,6 +221,8 @@ export async function getOrganizationAiUsageSummary(organizationId: string) {
   });
 
   return {
+    plan: plan.id,
+    availablePlans: listPlanCatalog(),
     daily: {
       date: today,
       requestCount: dailyUsage?.requestCount || 0,
@@ -216,8 +231,8 @@ export async function getOrganizationAiUsageSummary(organizationId: string) {
       totalTokens: dailyUsage?.totalTokens || 0,
       estimatedCostUsd: dailyUsage?.estimatedCostUsd || 0,
       limits: {
-        requestLimit: env.AI_DAILY_REQUEST_LIMIT,
-        tokenLimit: env.AI_DAILY_TOKEN_LIMIT
+        requestLimit: plan.dailyRequestLimit,
+        tokenLimit: plan.dailyTokenLimit
       }
     },
     monthly: {
@@ -228,7 +243,7 @@ export async function getOrganizationAiUsageSummary(organizationId: string) {
       totalTokens: monthlyUsage._sum.totalTokens || 0,
       estimatedCostUsd: monthlyUsage._sum.estimatedCostUsd || 0,
       limits: {
-        tokenLimit: env.AI_MONTHLY_TOKEN_LIMIT
+        tokenLimit: plan.monthlyTokenLimit
       }
     }
   };

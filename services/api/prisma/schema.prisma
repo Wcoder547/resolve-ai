@@ -63,17 +63,46 @@ enum IntegrationStatus {
   DISABLED
 }
 
+enum AiLlmProvider {
+  OPENROUTER
+  GROQ
+  GEMINI
+}
+
+enum TicketStatus {
+  OPEN
+  PENDING
+  ESCALATED
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
 model User {
   id           String @id @default(uuid())
   name         String
   email        String @unique
   passwordHash String
 
-  memberships             OrganizationMember[]
-  refreshTokens           RefreshToken[]
-  auditLogs               AuditLog[]
-  createdKnowledgeSources KnowledgeSource[]    @relation("KnowledgeSourceCreatedBy")
-  agentRuns               AgentRun[]
+  emailVerifiedAt DateTime?
+
+  memberships              OrganizationMember[]
+  refreshTokens            RefreshToken[]
+  emailVerificationTokens  EmailVerificationToken[]
+  passwordResetTokens      PasswordResetToken[]
+  sentOrganizationInvites  OrganizationInvite[] @relation("OrganizationInvitesSent")
+  notificationPreferences  UserNotificationPreference[]
+  auditLogs                AuditLog[]
+  createdKnowledgeSources  KnowledgeSource[]    @relation("KnowledgeSourceCreatedBy")
+  agentRuns                AgentRun[]
+  assignedTickets          Ticket[]             @relation("TicketAssignee")
+  createdTickets           Ticket[]             @relation("TicketCreatedBy")
 
   conversations Conversation[]
   messages      Message[]
@@ -100,6 +129,10 @@ model Organization {
 
   integrations             OrganizationIntegration[]
   integrationExecutionLogs IntegrationExecutionLog[]
+  invites                  OrganizationInvite[]
+  aiProviders              OrganizationAiProvider[]
+  notificationPreferences  UserNotificationPreference[]
+  tickets                  Ticket[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -122,6 +155,32 @@ model OrganizationMember {
   @@index([organizationId, role])
 }
 
+model OrganizationInvite {
+  id              String    @id @default(uuid())
+  organizationId  String
+  email           String
+  role            UserRole  @default(VIEWER)
+  tokenHash       String    @unique
+  invitedByUserId String?
+
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  revokedAt  DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User?        @relation("OrganizationInvitesSent", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([email])
+  @@index([expiresAt])
+  @@index([organizationId, email])
+  @@index([acceptedAt])
+  @@index([revokedAt])
+}
+
 model RefreshToken {
   id        String    @id @default(uuid())
   userId    String
@@ -138,6 +197,40 @@ model RefreshToken {
   @@index([tokenHash])
   @@index([expiresAt])
   @@index([userId, revokedAt, expiresAt])
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([usedAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([usedAt])
 }
 
 model AuditLog {
@@ -373,6 +466,7 @@ model AgentRun {
 
   steps     AgentStep[]
   toolCalls AgentToolCall[]
+  tickets   Ticket[]
 
   startedAt   DateTime  @default(now())
   completedAt DateTime?
@@ -494,4 +588,76 @@ model IntegrationExecutionLog {
   @@index([integrationId])
   @@index([provider])
   @@index([status])
+}
+
+model OrganizationAiProvider {
+  id              String        @id @default(uuid())
+  organizationId  String
+  provider        AiLlmProvider
+  encryptedApiKey String
+  keyLastFour     String
+  model           String
+  isDefault       Boolean       @default(false)
+  lastTestedAt    DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, provider])
+  @@index([organizationId])
+  @@index([organizationId, isDefault])
+}
+
+model UserNotificationPreference {
+  id             String @id @default(uuid())
+  userId         String
+  organizationId String
+  eventKey       String
+  emailEnabled   Boolean @default(true)
+  slackEnabled   Boolean @default(false)
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, organizationId, eventKey])
+  @@index([userId])
+  @@index([organizationId])
+}
+
+model Ticket {
+  id              String         @id @default(uuid())
+  organizationId  String
+  subject         String
+  description     String?        @db.Text
+  customerName    String?
+  customerEmail   String?
+  status          TicketStatus   @default(OPEN)
+  priority        TicketPriority @default(MEDIUM)
+  confidence      String?
+  summary         String?        @db.Text
+  assigneeId      String?
+  createdByUserId String?
+  agentRunId      String?
+  conversationId  String?
+  metadata        Json?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignee     User?         @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdBy    User?         @relation("TicketCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  agentRun     AgentRun?     @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, priority])
+  @@index([assigneeId])
+  @@index([agentRunId])
+  @@index([organizationId, createdAt])
 }

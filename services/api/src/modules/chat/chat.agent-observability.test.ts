@@ -57,7 +57,7 @@ describe("Agent observability safety", () => {
     });
 
     const response = await request(app)
-      .get(`/api/chat/agent/runs/${run.id}/debug`)
+      .get(`/api/v1/chat/agent/runs/${run.id}/debug`)
       .set("Authorization", `Bearer ${accessToken}`);
 
     expect(response.status).toBe(200);
@@ -85,7 +85,7 @@ describe("Agent observability safety", () => {
     });
 
     const response = await request(app)
-      .get(`/api/chat/agent/runs/${run.id}/debug`)
+      .get(`/api/v1/chat/agent/runs/${run.id}/debug`)
       .set("Authorization", `Bearer ${support.accessToken}`);
 
     expect(response.status).toBe(403);

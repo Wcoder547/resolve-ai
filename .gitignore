@@ -8,6 +8,8 @@ node_modules/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.production
+
 
 # next
 .next/
@@ -52,6 +54,9 @@ backups/
 *.dump
 backup.log
 prune.log
+
+# Keep Prisma migrations versioned (override *.sql above)
+!services/api/prisma/migrations/**/*.sql
 
 
 services/api/eval-reports-agentic/

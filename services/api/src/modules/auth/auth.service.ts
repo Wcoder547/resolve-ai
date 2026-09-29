@@ -3,7 +3,9 @@ import { signAccessToken, verifyRefreshToken } from "../../utils/jwt.js";
 import { comparePassword, hashPassword } from "../../utils/password.js";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
+import { logger } from "../../lib/logger.js";
 import type {
+  ChangePasswordInput,
   LoginInput,
   LogoutInput,
   RefreshInput,
@@ -14,15 +16,30 @@ import {
   createUniqueOrganizationSlug,
   hashRefreshToken
 } from "./auth.utils.js";
-
-function createAuthError(name: string, message: string) {
-  const error = new Error(message);
-  error.name = name;
-  return error;
-}
+import { sendEmailVerificationForUser } from "./email-verification.service.js";
+import { createAuthError } from "./auth-error.js";
 
 function createSafeUnauthorizedError() {
-  return createAuthError("UnauthorizedError", "Invalid email or password.");
+  return createAuthError(
+    "UnauthorizedError",
+    "Invalid email or password.",
+    "INVALID_CREDENTIALS",
+  );
+}
+
+function toAuthUser(user: {
+  id: string;
+  name: string;
+  email: string;
+  emailVerifiedAt: Date | null;
+}) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    emailVerifiedAt: user.emailVerifiedAt,
+    emailVerified: Boolean(user.emailVerifiedAt)
+  };
 }
 
 async function writeAuditLog(input: {
@@ -49,7 +66,11 @@ export async function registerUser(data: RegisterInput) {
   });
 
   if (existingUser) {
-    throw createAuthError("ConflictError", "User already exists.");
+    throw createAuthError(
+      "ConflictError",
+      "An account with this email already exists.",
+      "USER_EXISTS",
+    );
   }
 
   const passwordHash = await hashPassword(data.password);
@@ -99,6 +120,16 @@ export async function registerUser(data: RegisterInput) {
     };
   });
 
+  await sendEmailVerificationForUser(result.user.id).catch((error) => {
+    logger.warn(
+      {
+        userId: result.user.id,
+        error: error instanceof Error ? error.message : String(error)
+      },
+      "Failed to send verification email after registration"
+    );
+  });
+
   const accessToken = signAccessToken({
     userId: result.user.id,
     email: result.user.email
@@ -107,11 +138,7 @@ export async function registerUser(data: RegisterInput) {
   const refreshToken = await createStoredRefreshToken(result.user.id);
 
   return {
-    user: {
-      id: result.user.id,
-      name: result.user.name,
-      email: result.user.email
-    },
+    user: toAuthUser(result.user),
     organization: {
       id: result.organization.id,
       name: result.organization.name,
@@ -152,6 +179,14 @@ export async function loginUser(data: LoginInput) {
     throw createSafeUnauthorizedError();
   }
 
+  if (!user.emailVerifiedAt) {
+    throw createAuthError(
+      "ForbiddenError",
+      "Please verify your email before logging in.",
+      "EMAIL_NOT_VERIFIED",
+    );
+  }
+
   const organization = user.memberships[0]?.organization || null;
   const membership = user.memberships[0] || null;
 
@@ -172,11 +207,7 @@ export async function loginUser(data: LoginInput) {
   });
 
   return {
-    user: {
-      id: user.id,
-      name: user.name,
-      email: user.email
-    },
+    user: toAuthUser(user),
     organization: organization
       ? {
           id: organization.id,
@@ -203,14 +234,16 @@ export async function refreshUserToken(data: RefreshInput) {
   } catch {
     throw createAuthError(
       "UnauthorizedError",
-      "Invalid or expired refresh token."
+      "Invalid or expired refresh token.",
+      "INVALID_REFRESH_TOKEN",
     );
   }
 
   if (payload.type !== "refresh") {
     throw createAuthError(
       "UnauthorizedError",
-      "Invalid or expired refresh token."
+      "Invalid or expired refresh token.",
+      "INVALID_REFRESH_TOKEN",
     );
   }
 
@@ -221,7 +254,19 @@ export async function refreshUserToken(data: RefreshInput) {
   });
 
   if (!user) {
-    throw createAuthError("UnauthorizedError", "User no longer exists.");
+    throw createAuthError(
+      "UnauthorizedError",
+      "User no longer exists.",
+      "USER_NOT_FOUND",
+    );
+  }
+
+  if (!user.emailVerifiedAt) {
+    throw createAuthError(
+      "ForbiddenError",
+      "Please verify your email before continuing.",
+      "EMAIL_NOT_VERIFIED",
+    );
   }
 
   const incomingTokenHash = hashRefreshToken(data.refreshToken);
@@ -261,7 +306,8 @@ export async function refreshUserToken(data: RefreshInput) {
 
     throw createAuthError(
       "UnauthorizedError",
-      "Invalid or expired refresh token."
+      "Invalid or expired refresh token.",
+      "INVALID_REFRESH_TOKEN",
     );
   }
 
@@ -290,11 +336,7 @@ export async function refreshUserToken(data: RefreshInput) {
   });
 
   return {
-    user: {
-      id: user.id,
-      name: user.name,
-      email: user.email
-    },
+    user: toAuthUser(user),
     tokens: {
       accessToken,
       refreshToken
@@ -324,11 +366,7 @@ export async function getCurrentUser(userId: string) {
   }
 
   return {
-    user: {
-      id: user.id,
-      name: user.name,
-      email: user.email
-    },
+    user: toAuthUser(user),
     organizations: user.memberships.map((membership) => ({
       id: membership.organization.id,
       name: membership.organization.name,
@@ -402,6 +440,211 @@ export async function logoutAllUserSessions(userId: string) {
     action: "AUTH_LOGOUT_ALL_SESSIONS",
     metadata: {
       mode: "all_sessions"
+    }
+  });
+
+  return true;
+}
+
+export async function changePassword(userId: string, input: ChangePasswordInput) {
+  const user = await prisma.user.findUnique({
+    where: {
+      id: userId
+    }
+  });
+
+  if (!user) {
+    throw createAuthError("NotFoundError", "User not found.");
+  }
+
+  const isCurrentValid = await comparePassword(
+    input.currentPassword,
+    user.passwordHash
+  );
+
+  if (!isCurrentValid) {
+    throw createAuthError("UnauthorizedError", "Current password is incorrect.");
+  }
+
+  const isSamePassword = await comparePassword(
+    input.newPassword,
+    user.passwordHash
+  );
+
+  if (isSamePassword) {
+    throw createAuthError(
+      "BadRequestError",
+      "New password must be different from the current password."
+    );
+  }
+
+  const passwordHash = await hashPassword(input.newPassword);
+
+  await prisma.user.update({
+    where: {
+      id: user.id
+    },
+    data: {
+      passwordHash
+    }
+  });
+
+  await prisma.refreshToken.updateMany({
+    where: {
+      userId: user.id,
+      revokedAt: null
+    },
+    data: {
+      revokedAt: new Date()
+    }
+  });
+
+  const accessToken = signAccessToken({
+    userId: user.id,
+    email: user.email
+  });
+
+  const refreshToken = await createStoredRefreshToken(user.id);
+
+  await writeAuditLog({
+    userId: user.id,
+    action: "PASSWORD_CHANGED",
+    metadata: {
+      email: user.email
+    }
+  });
+
+  return {
+    user: toAuthUser(user),
+    tokens: {
+      accessToken,
+      refreshToken
+    }
+  };
+}
+
+export async function listUserSessions(userId: string, currentRefreshToken?: string) {
+  const sessions = await prisma.refreshToken.findMany({
+    where: {
+      userId,
+      revokedAt: null,
+      expiresAt: {
+        gt: new Date()
+      }
+    },
+    orderBy: {
+      createdAt: "desc"
+    },
+    select: {
+      id: true,
+      createdAt: true,
+      expiresAt: true
+    }
+  });
+
+  const currentHash = currentRefreshToken
+    ? hashRefreshToken(currentRefreshToken)
+    : null;
+
+  const currentSession = currentHash
+    ? await prisma.refreshToken.findFirst({
+        where: {
+          userId,
+          tokenHash: currentHash,
+          revokedAt: null
+        },
+        select: {
+          id: true
+        }
+      })
+    : null;
+
+  return {
+    sessions: sessions.map((session) => ({
+      id: session.id,
+      createdAt: session.createdAt,
+      expiresAt: session.expiresAt,
+      current: currentSession?.id === session.id
+    }))
+  };
+}
+
+export async function revokeUserSession(userId: string, sessionId: string) {
+  const session = await prisma.refreshToken.findFirst({
+    where: {
+      id: sessionId,
+      userId
+    }
+  });
+
+  if (!session) {
+    throw createAuthError("NotFoundError", "Session not found.");
+  }
+
+  if (!session.revokedAt) {
+    await prisma.refreshToken.update({
+      where: {
+        id: session.id
+      },
+      data: {
+        revokedAt: new Date()
+      }
+    });
+  }
+
+  await writeAuditLog({
+    userId,
+    action: "AUTH_SESSION_REVOKED",
+    metadata: {
+      sessionId: session.id
+    }
+  });
+
+  return true;
+}
+
+export async function revokeOtherUserSessions(
+  userId: string,
+  currentRefreshToken: string
+) {
+  const currentHash = hashRefreshToken(currentRefreshToken);
+
+  const currentSession = await prisma.refreshToken.findFirst({
+    where: {
+      userId,
+      tokenHash: currentHash,
+      revokedAt: null,
+      expiresAt: {
+        gt: new Date()
+      }
+    }
+  });
+
+  if (!currentSession) {
+    throw createAuthError(
+      "UnauthorizedError",
+      "Invalid or expired refresh token."
+    );
+  }
+
+  await prisma.refreshToken.updateMany({
+    where: {
+      userId,
+      revokedAt: null,
+      id: {
+        not: currentSession.id
+      }
+    },
+    data: {
+      revokedAt: new Date()
+    }
+  });
+
+  await writeAuditLog({
+    userId,
+    action: "AUTH_OTHER_SESSIONS_REVOKED",
+    metadata: {
+      keptSessionId: currentSession.id
     }
   });
 

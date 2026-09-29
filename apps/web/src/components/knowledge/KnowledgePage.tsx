@@ -4,9 +4,10 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Upload, FileText, Search, RefreshCw,
   Trash2, AlertCircle, Loader2, CheckCircle,
-  ChevronDown, Filter, Copy, X, Database
+  ChevronDown, Filter, Copy, X
 } from "lucide-react";
 import { Button } from "../ui/button";
+import { EmptyState, SectionMark } from "../ui/EmptyState";
 import {
   listKnowledgeSources,
   getKnowledgeSource,
@@ -60,10 +61,10 @@ function fileExtLabel(source: KnowledgeSource): string {
 
 const statusBadge = (status: DisplayStatus) => {
   const map: Record<DisplayStatus, string> = {
-    "Ready for AI": "bg-emerald-400/10 text-emerald-400 border-emerald-400/20",
-    "Processing": "bg-yellow-400/10 text-yellow-400 border-yellow-400/20",
-    "Failed": "bg-red-400/10 text-red-400 border-red-400/20",
-    "Pending": "bg-slate-400/10 text-slate-400 border-slate-400/20",
+    "Ready for AI": "bg-signal-soft text-signal border-signal/20",
+    "Processing": "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800",
+    "Failed": "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800",
+    "Pending": "bg-muted text-muted-foreground border-border",
   };
   return map[status];
 };
@@ -239,18 +240,23 @@ export function KnowledgePage() {
   const selectedChunksTotal = selected?.documents.reduce((sum, d) => sum + d.chunksCount, 0) ?? 0;
 
   return (
-    <div className="flex h-full bg-[#020617]">
+    <div className="flex h-full bg-background">
       {/* Source list */}
-      <div className={`flex flex-col ${selectedId ? "hidden lg:flex lg:w-[420px] xl:w-[480px]" : "flex-1"} border-r border-[#1E293B]`}>
-        <div className="p-6 border-b border-[#1E293B] space-y-4">
+      <div className={`flex flex-col ${selectedId ? "hidden lg:flex lg:w-[420px] xl:w-[480px]" : "flex-1"} border-r border-border`}>
+        <div className="p-6 border-b border-border space-y-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold text-slate-50">Knowledge Base</h1>
-              <p className="text-xs text-slate-500 mt-0.5">Manage the sources ResolveAI uses to generate grounded answers.</p>
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="mt-0.5 hidden sm:block">
+                <SectionMark variant="stack" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="font-display text-xl tracking-tight text-foreground">Knowledge Base</h1>
+                <p className="text-xs text-muted-foreground mt-0.5">Sources ResolveAI cites for grounded answers.</p>
+              </div>
             </div>
             <Button
               size="sm"
-              className="bg-cyan-400 text-slate-950 hover:bg-cyan-300 font-semibold text-xs"
+              className="bg-brand text-brand-foreground hover:bg-brand/90 font-semibold text-xs shrink-0"
               onClick={() => setShowUpload(!showUpload)}
             >
               <Upload className="w-3.5 h-3.5 mr-1.5" /> Upload source
@@ -259,10 +265,10 @@ export function KnowledgePage() {
 
           {/* Upload panel */}
           {showUpload && (
-            <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-4 space-y-3">
+            <div className="bg-card border border-border rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-slate-300">Upload knowledge source</span>
-                <button onClick={() => setShowUpload(false)} className="text-slate-500 hover:text-slate-300">
+                <span className="text-sm font-medium text-foreground/80">Upload knowledge source</span>
+                <button onClick={() => setShowUpload(false)} className="text-muted-foreground hover:text-foreground/80">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -276,7 +282,7 @@ export function KnowledgePage() {
                 onDragLeave={() => setDragOver(false)}
                 onClick={() => fileRef.current?.click()}
                 className={`border-2 border-dashed rounded-xl px-4 py-6 text-center cursor-pointer transition-all
-                  ${dragOver ? "border-cyan-400 bg-cyan-400/5" : "border-[#334155] hover:border-[#475569]"}`}
+                  ${dragOver ? "border-brand bg-brand/5" : "border-border hover:border-[#475569]"}`}
               >
                 <input
                   ref={fileRef}
@@ -285,26 +291,26 @@ export function KnowledgePage() {
                   className="hidden"
                   onChange={e => handleFilePick(e.target.files?.[0] ?? null)}
                 />
-                <Upload className="w-5 h-5 text-slate-500 mx-auto mb-2" />
-                <div className="text-xs text-slate-400">
+                <Upload className="w-5 h-5 text-muted-foreground mx-auto mb-2" />
+                <div className="text-xs text-muted-foreground">
                   {uploadFile ? uploadFile.name : "Drop file or click to browse"}
                 </div>
-                <div className="text-[10px] text-slate-600 mt-1">PDF, TXT, Markdown, DOCX</div>
+                <div className="text-[10px] text-muted-foreground mt-1">PDF, TXT, Markdown, DOCX</div>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs text-slate-500 mb-1">Source name</label>
+                  <label className="block text-xs text-muted-foreground mb-1">Source name</label>
                   <input
                     value={uploadName}
                     onChange={e => setUploadName(e.target.value)}
                     placeholder="e.g. Billing Runbook"
-                    className="w-full bg-[#0B1220] border border-[#334155] rounded-lg px-3 py-1.5 text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-cyan-400 transition-colors"
+                    className="w-full bg-card border border-border rounded-lg px-3 py-1.5 text-xs text-foreground/80 placeholder:text-muted-foreground focus:outline-none focus:border-brand transition-colors"
                   />
                 </div>
                 <div className="flex items-end">
                   <Button
                     size="sm"
-                    className="w-full bg-cyan-400 text-slate-950 hover:bg-cyan-300 text-xs disabled:opacity-40"
+                    className="w-full bg-brand text-brand-foreground hover:bg-brand/90 text-xs disabled:opacity-40"
                     disabled={!uploadFile || uploading}
                     onClick={handleUpload}
                   >
@@ -312,40 +318,40 @@ export function KnowledgePage() {
                   </Button>
                 </div>
               </div>
-              {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
+              {uploadError && <p className="text-xs text-red-700">{uploadError}</p>}
             </div>
           )}
 
           {/* Search + RAG test */}
           <div className="flex gap-2">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
               <input
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Search sources..."
-                className="w-full bg-[#0F172A] border border-[#1E293B] rounded-lg pl-9 pr-3 py-2 text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#334155] transition-colors"
+                className="w-full bg-card border border-border rounded-lg pl-9 pr-3 py-2 text-xs text-foreground/80 placeholder:text-muted-foreground focus:outline-none focus:border-border transition-colors"
               />
             </div>
-            <button className="px-3 py-2 border border-[#1E293B] rounded-lg text-slate-500 hover:text-slate-300 hover:border-[#334155] transition-colors">
+            <button className="px-3 py-2 border border-border rounded-lg text-muted-foreground hover:text-foreground/80 hover:border-border transition-colors">
               <Filter className="w-3.5 h-3.5" />
             </button>
           </div>
 
           {/* RAG test */}
-          <div className="bg-[#0B1220] border border-[#1E293B] rounded-xl p-3">
-            <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Search ingested knowledge</div>
+          <div className="bg-card border border-border rounded-xl p-3">
+            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Search ingested knowledge</div>
             <div className="flex gap-2">
               <input
                 value={ragQuery}
                 onChange={e => setRagQuery(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleRagSearch()}
                 placeholder="Payment successful but subscription not activated."
-                className="flex-1 bg-[#0F172A] border border-[#1E293B] rounded-lg px-3 py-1.5 text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-cyan-400 transition-colors"
+                className="flex-1 bg-card border border-border rounded-lg px-3 py-1.5 text-xs text-foreground/80 placeholder:text-muted-foreground focus:outline-none focus:border-brand transition-colors"
               />
               <Button
                 size="sm"
-                className="bg-cyan-400/10 text-cyan-400 hover:bg-cyan-400/20 border border-cyan-400/30 text-xs px-3 disabled:opacity-40"
+                className="bg-brand-soft text-brand hover:bg-brand-soft border border-brand/30 text-xs px-3 disabled:opacity-40"
                 disabled={!ragQuery.trim() || ragLoading}
                 onClick={handleRagSearch}
               >
@@ -355,17 +361,17 @@ export function KnowledgePage() {
             {ragResults.length > 0 && (
               <div className="mt-3 space-y-2">
                 {ragResults.map(chunk => (
-                  <div key={chunk.id} className="bg-[#0F172A] border border-[#1E293B] rounded-lg p-2.5">
+                  <div key={chunk.id} className="bg-card border border-border rounded-lg p-2.5">
                     <div className="flex items-center gap-2 mb-1.5">
-                      <span className="font-mono text-[10px] text-slate-500">Chunk {chunk.chunkIndex}</span>
-                      <span className="text-[10px] font-mono text-emerald-400 bg-emerald-400/10 px-1.5 rounded">
+                      <span className="font-mono text-[10px] text-muted-foreground">Chunk {chunk.chunkIndex}</span>
+                      <span className="text-[10px] font-mono text-signal bg-signal-soft px-1.5 rounded">
                         {chunk.score.toFixed(2)}
                       </span>
-                      <span className="text-[10px] text-slate-500">{chunk.source.name}</span>
+                      <span className="text-[10px] text-muted-foreground">{chunk.source.name}</span>
                     </div>
-                    <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-2">{chunk.chunkText}</p>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">{chunk.chunkText}</p>
                     <button
-                      className="text-[10px] text-cyan-400 hover:text-cyan-300 mt-1.5 flex items-center gap-1"
+                      className="text-[10px] text-brand hover:text-brand mt-1.5 flex items-center gap-1"
                       onClick={() => handleCopyChunk(chunk.id, chunk.chunkText)}
                     >
                       <Copy className="w-3 h-3" />
@@ -380,40 +386,55 @@ export function KnowledgePage() {
 
         {/* Sources table */}
         <div className="flex-1 overflow-y-auto">
-          <div className="divide-y divide-[#1E293B]">
+          <div className="divide-y divide-border">
             {sourcesLoading ? (
-              <div className="flex items-center justify-center py-16 text-slate-600">
+              <div className="flex items-center justify-center py-16 text-muted-foreground">
                 <Loader2 className="w-5 h-5 animate-spin" />
               </div>
             ) : sourcesError ? (
               <div className="p-12 text-center">
-                <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-3" />
-                <div className="text-sm text-red-400 mb-3">{sourcesError}</div>
-                <Button size="sm" className="bg-cyan-400/10 text-cyan-400 hover:bg-cyan-400/20 text-xs" onClick={loadSources}>
+                <AlertCircle className="w-8 h-8 text-red-700 mx-auto mb-3" />
+                <div className="text-sm text-red-700 mb-3">{sourcesError}</div>
+                <Button size="sm" className="bg-brand-soft text-brand hover:bg-brand-soft text-xs" onClick={loadSources}>
                   Retry
                 </Button>
               </div>
             ) : filtered.length === 0 ? (
-              <div className="p-12 text-center">
-                <Database className="w-10 h-10 text-slate-700 mx-auto mb-3" />
-                <div className="text-sm font-medium text-slate-400 mb-1">No sources found</div>
-                <div className="text-xs text-slate-600">Upload your first knowledge source to get started.</div>
-              </div>
+              <EmptyState
+                variant="knowledge"
+                title={searchQuery ? "No sources match" : "No sources yet"}
+                description={
+                  searchQuery
+                    ? "Try a different search term."
+                    : "Upload a runbook, FAQ, or guide to ground your AI answers."
+                }
+                action={
+                  !searchQuery ? (
+                    <Button
+                      size="sm"
+                      className="bg-brand text-brand-foreground hover:bg-brand/90 text-xs"
+                      onClick={() => setShowUpload(true)}
+                    >
+                      <Upload className="w-3.5 h-3.5 mr-1.5" /> Upload source
+                    </Button>
+                  ) : undefined
+                }
+              />
             ) : filtered.map(src => {
               const status = toDisplayStatus(src.status);
               return (
                 <div
                   key={src.id}
                   onClick={() => { setSelectedId(src.id); setActiveTab("overview"); }}
-                  className={`flex items-center gap-3 px-5 py-3.5 hover:bg-[#0F172A] cursor-pointer transition-colors ${selectedId === src.id ? "bg-cyan-400/5 border-r-2 border-r-cyan-400" : ""}`}
+                  className={`flex items-center gap-3 px-5 py-3.5 hover:bg-card cursor-pointer transition-colors ${selectedId === src.id ? "bg-brand/5 border-r-2 border-r-brand" : ""}`}
                 >
-                  <FileText className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                  <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-slate-200 truncate">{src.name}</span>
-                      <span className="font-mono text-[10px] text-slate-600">{fileExtLabel(src)}</span>
+                      <span className="text-sm font-medium text-foreground truncate">{src.name}</span>
+                      <span className="font-mono text-[10px] text-muted-foreground">{fileExtLabel(src)}</span>
                     </div>
-                    <div className="text-[11px] text-slate-500 mt-0.5">
+                    <div className="text-[11px] text-muted-foreground mt-0.5">
                       {src.documentsCount ? `${src.documentsCount} docs · ` : ""}{formatBytes(src.sizeBytes)} · {formatRelativeTime(src.updatedAt)}
                     </div>
                   </div>
@@ -435,27 +456,27 @@ export function KnowledgePage() {
         <div className="flex-1 flex flex-col overflow-hidden">
           {detailLoading || !selected || !selectedStatus ? (
             <div className="flex-1 flex items-center justify-center">
-              <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
+              <Loader2 className="w-5 h-5 text-brand animate-spin" />
             </div>
           ) : (
             <>
               {/* Detail header */}
-              <div className="px-6 py-4 border-b border-[#1E293B] flex items-center gap-4">
+              <div className="px-6 py-4 border-b border-border flex items-center gap-4">
                 <button
                   onClick={() => setSelectedId(null)}
-                  className="lg:hidden text-slate-500 hover:text-slate-300"
+                  className="lg:hidden text-muted-foreground hover:text-foreground/80"
                 >
                   <X className="w-4 h-4" />
                 </button>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="text-base font-semibold text-slate-100">{selected.name}</h2>
+                    <h2 className="text-base font-semibold text-foreground">{selected.name}</h2>
                     <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border flex items-center gap-1 ${statusBadge(selectedStatus)}`}>
                       {statusIcon(selectedStatus)} {selectedStatus}
                     </span>
-                    <span className="font-mono text-[10px] text-slate-600">{fileExtLabel(selected)}</span>
+                    <span className="font-mono text-[10px] text-muted-foreground">{fileExtLabel(selected)}</span>
                   </div>
-                  <div className="text-xs text-slate-500 mt-0.5">
+                  <div className="text-xs text-muted-foreground mt-0.5">
                     Updated {formatRelativeTime(selected.updatedAt)} · {formatBytes(selected.sizeBytes)}
                   </div>
                 </div>
@@ -463,7 +484,7 @@ export function KnowledgePage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="border-[#334155] text-slate-400 hover:text-slate-200 hover:bg-[#1E293B] bg-transparent text-xs disabled:opacity-40"
+                    className="border-border text-muted-foreground hover:text-foreground hover:bg-muted bg-transparent text-xs disabled:opacity-40"
                     disabled={reingesting}
                     onClick={handleReingest}
                   >
@@ -473,7 +494,7 @@ export function KnowledgePage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="border-red-400/30 text-red-400 hover:bg-red-400/10 bg-transparent text-xs disabled:opacity-40"
+                    className="border-red-400/30 text-red-700 hover:bg-red-50 bg-transparent text-xs disabled:opacity-40"
                     disabled={deleting}
                     onClick={handleDelete}
                   >
@@ -483,12 +504,12 @@ export function KnowledgePage() {
               </div>
 
               {/* Tabs */}
-              <div className="flex gap-0.5 px-6 border-b border-[#1E293B] bg-[#020617]">
+              <div className="flex gap-0.5 px-6 border-b border-border bg-background">
                 {["overview", "documents", "chunks", "errors"].map(tab => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
-                    className={`px-4 py-3 text-sm capitalize border-b-2 transition-colors ${activeTab === tab ? "border-cyan-400 text-cyan-400" : "border-transparent text-slate-500 hover:text-slate-300"}`}
+                    className={`px-4 py-3 text-sm capitalize border-b-2 transition-colors ${activeTab === tab ? "border-brand text-brand" : "border-transparent text-muted-foreground hover:text-foreground/80"}`}
                   >
                     {tab}
                   </button>
@@ -506,42 +527,42 @@ export function KnowledgePage() {
                         { label: "Size", value: formatBytes(selected.sizeBytes) },
                         { label: "Created", value: new Date(selected.createdAt).toLocaleDateString() },
                       ].map(({ label, value }) => (
-                        <div key={label} className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-3 text-center">
-                          <div className="font-mono text-lg font-bold text-cyan-400">{value}</div>
-                          <div className="text-xs text-slate-500 mt-0.5">{label}</div>
+                        <div key={label} className="bg-card border border-border rounded-xl p-3 text-center">
+                          <div className="font-mono text-lg font-bold text-brand">{value}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">{label}</div>
                         </div>
                       ))}
                     </div>
 
-                    <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-4">
-                      <div className="text-xs font-semibold text-slate-400 mb-3">Source health</div>
+                    <div className="bg-card border border-border rounded-xl p-4">
+                      <div className="text-xs font-semibold text-muted-foreground mb-3">Source health</div>
                       {selectedStatus === "Ready for AI" && (
                         <div className="flex items-center gap-2">
                           <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                          <span className="text-sm text-emerald-400">All chunks indexed successfully</span>
+                          <span className="text-sm text-signal">All chunks indexed successfully</span>
                         </div>
                       )}
                       {selectedStatus === "Processing" && (
                         <div className="flex items-center gap-2">
-                          <Loader2 className="w-4 h-4 text-yellow-400 animate-spin" />
-                          <span className="text-sm text-yellow-400">Processing document...</span>
+                          <Loader2 className="w-4 h-4 text-amber-700 animate-spin" />
+                          <span className="text-sm text-amber-700">Processing document...</span>
                         </div>
                       )}
                       {selectedStatus === "Pending" && (
                         <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-slate-400" />
-                          <span className="text-sm text-slate-400">Waiting to be ingested</span>
+                          <div className="w-2 h-2 rounded-full bg-muted-foreground" />
+                          <span className="text-sm text-muted-foreground">Waiting to be ingested</span>
                         </div>
                       )}
                       {selectedStatus === "Failed" && (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
-                            <AlertCircle className="w-4 h-4 text-red-400" />
-                            <span className="text-sm text-red-400">Ingestion failed — see Errors tab</span>
+                            <AlertCircle className="w-4 h-4 text-red-700" />
+                            <span className="text-sm text-red-700">Ingestion failed — see Errors tab</span>
                           </div>
                           <Button
                             size="sm"
-                            className="bg-cyan-400/10 text-cyan-400 hover:bg-cyan-400/20 text-xs disabled:opacity-40"
+                            className="bg-brand-soft text-brand hover:bg-brand-soft text-xs disabled:opacity-40"
                             disabled={reingesting}
                             onClick={handleReingest}
                           >
@@ -551,8 +572,8 @@ export function KnowledgePage() {
                       )}
                     </div>
 
-                    <div className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-4">
-                      <div className="text-xs font-semibold text-slate-400 mb-3">Metadata</div>
+                    <div className="bg-card border border-border rounded-xl p-4">
+                      <div className="text-xs font-semibold text-muted-foreground mb-3">Metadata</div>
                       <div className="space-y-2 text-sm">
                         {[
                           { k: "Source ID", v: selected.id },
@@ -562,8 +583,8 @@ export function KnowledgePage() {
                           { k: "Token estimate", v: selectedChunksTotal > 0 ? `~${(selectedChunksTotal * 485).toLocaleString()} tokens` : "—" },
                         ].map(({ k, v }) => (
                           <div key={k} className="flex justify-between gap-4">
-                            <span className="text-slate-500">{k}</span>
-                            <span className="font-mono text-xs text-slate-400 truncate">{v}</span>
+                            <span className="text-muted-foreground">{k}</span>
+                            <span className="font-mono text-xs text-muted-foreground truncate">{v}</span>
                           </div>
                         ))}
                       </div>
@@ -574,46 +595,46 @@ export function KnowledgePage() {
                 {activeTab === "chunks" && (
                   <div className="space-y-3 max-w-2xl">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-slate-400">{selectedChunksTotal} total chunks</span>
+                      <span className="text-sm text-muted-foreground">{selectedChunksTotal} total chunks</span>
                       <div className="relative">
-                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500" />
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
                         <input
                           value={chunkFilter}
                           onChange={e => setChunkFilter(e.target.value)}
                           onKeyDown={e => e.key === "Enter" && handleChunkSearch()}
                           placeholder="Filter chunks..."
-                          className="bg-[#0F172A] border border-[#1E293B] rounded-lg pl-7 pr-3 py-1.5 text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#334155] w-48"
+                          className="bg-card border border-border rounded-lg pl-7 pr-3 py-1.5 text-xs text-foreground/80 placeholder:text-muted-foreground focus:outline-none focus:border-border w-48"
                         />
                       </div>
                     </div>
                     {chunkSearching ? (
-                      <div className="flex items-center justify-center py-10 text-slate-600">
+                      <div className="flex items-center justify-center py-10 text-muted-foreground">
                         <Loader2 className="w-4 h-4 animate-spin" />
                       </div>
                     ) : chunkResults.length === 0 ? (
-                      <div className="text-center py-10 text-xs text-slate-600">
+                      <div className="text-center py-10 text-xs text-muted-foreground">
                         {chunkFilter ? "No matching chunks in this source." : "Search this source's chunks by meaning above."}
                       </div>
                     ) : chunkResults.map(chunk => (
-                      <div key={chunk.id} className="bg-[#0F172A] border border-[#1E293B] rounded-xl p-4">
+                      <div key={chunk.id} className="bg-card border border-border rounded-xl p-4">
                         <div className="flex items-center gap-3 mb-2">
-                          <span className="font-mono text-xs text-slate-500">Chunk {chunk.chunkIndex}</span>
+                          <span className="font-mono text-xs text-muted-foreground">Chunk {chunk.chunkIndex}</span>
                           {chunk.tokenCount != null && (
-                            <span className="font-mono text-[10px] text-slate-600">{chunk.tokenCount} tokens</span>
+                            <span className="font-mono text-[10px] text-muted-foreground">{chunk.tokenCount} tokens</span>
                           )}
-                          <span className="font-mono text-[10px] text-emerald-400 bg-emerald-400/10 px-1.5 rounded">
+                          <span className="font-mono text-[10px] text-signal bg-signal-soft px-1.5 rounded">
                             {chunk.score.toFixed(2)}
                           </span>
                           <div className="ml-auto flex gap-2">
                             <button
                               onClick={() => handleCopyChunk(chunk.id, chunk.chunkText)}
-                              className="text-slate-500 hover:text-slate-300 transition-colors"
+                              className="text-muted-foreground hover:text-foreground/80 transition-colors"
                             >
-                              {copiedChunk === chunk.id ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                              {copiedChunk === chunk.id ? <CheckCircle className="w-3.5 h-3.5 text-signal" /> : <Copy className="w-3.5 h-3.5" />}
                             </button>
                           </div>
                         </div>
-                        <p className="text-xs text-slate-400 leading-relaxed">{chunk.chunkText}</p>
+                        <p className="text-xs text-muted-foreground leading-relaxed">{chunk.chunkText}</p>
                       </div>
                     ))}
                   </div>
@@ -622,22 +643,22 @@ export function KnowledgePage() {
                 {activeTab === "errors" && (
                   <div className="max-w-lg">
                     {selectedStatus === "Failed" ? (
-                      <div className="bg-red-400/5 border border-red-400/20 rounded-xl p-4">
+                      <div className="bg-red-400/5 border border-red-200 rounded-xl p-4">
                         <div className="flex items-center gap-2 mb-2">
-                          <AlertCircle className="w-4 h-4 text-red-400" />
-                          <span className="text-sm font-medium text-red-400">Ingestion failed</span>
+                          <AlertCircle className="w-4 h-4 text-red-700" />
+                          <span className="text-sm font-medium text-red-700">Ingestion failed</span>
                         </div>
-                        <div className="font-mono text-xs text-red-300 bg-red-400/10 rounded-lg p-3 mb-3">
+                        <div className="font-mono text-xs text-red-300 bg-red-50 rounded-lg p-3 mb-3">
                           {typeof selected.metadata?.error === "string"
                             ? selected.metadata.error
                             : "The ingestion pipeline reported a failure for this source. Check backend logs for details."}
                         </div>
-                        <div className="text-xs text-slate-500 mb-3">
+                        <div className="text-xs text-muted-foreground mb-3">
                           Occurred: {formatRelativeTime(selected.updatedAt)}
                         </div>
                         <Button
                           size="sm"
-                          className="bg-cyan-400/10 text-cyan-400 hover:bg-cyan-400/20 text-xs border border-cyan-400/20 disabled:opacity-40"
+                          className="bg-brand-soft text-brand hover:bg-brand-soft text-xs border border-brand/20 disabled:opacity-40"
                           disabled={reingesting}
                           onClick={handleReingest}
                         >
@@ -645,7 +666,7 @@ export function KnowledgePage() {
                         </Button>
                       </div>
                     ) : (
-                      <div className="text-center py-12 text-slate-600">
+                      <div className="text-center py-12 text-muted-foreground">
                         <CheckCircle className="w-8 h-8 mx-auto mb-2 text-emerald-600" />
                         <div className="text-sm">No errors recorded</div>
                       </div>
@@ -656,17 +677,22 @@ export function KnowledgePage() {
                 {activeTab === "documents" && (
                   <div className="max-w-2xl">
                     {selected.documents.length === 0 ? (
-                      <div className="text-center py-12 text-slate-600 text-sm">No documents in this source yet.</div>
+                      <EmptyState
+                        compact
+                        variant="knowledge"
+                        title="No documents yet"
+                        description="This source has no indexed documents."
+                      />
                     ) : (
-                      <div className="divide-y divide-[#1E293B] bg-[#0F172A] border border-[#1E293B] rounded-xl overflow-hidden">
+                      <div className="divide-y divide-border bg-card border border-border rounded-xl overflow-hidden">
                         {selected.documents.map(doc => (
                           <div key={doc.id} className="flex items-center gap-3 px-4 py-3">
-                            <FileText className="w-4 h-4 text-slate-500" />
+                            <FileText className="w-4 h-4 text-muted-foreground" />
                             <div className="flex-1 min-w-0">
-                              <div className="text-sm text-slate-300 truncate">{doc.title}</div>
-                              <div className="text-[11px] text-slate-500 font-mono">{doc.chunksCount} chunks</div>
+                              <div className="text-sm text-foreground/80 truncate">{doc.title}</div>
+                              <div className="text-[11px] text-muted-foreground font-mono">{doc.chunksCount} chunks</div>
                             </div>
-                            <span className="text-xs text-slate-500">{new Date(doc.createdAt).toLocaleDateString()}</span>
+                            <span className="text-xs text-muted-foreground">{new Date(doc.createdAt).toLocaleDateString()}</span>
                           </div>
                         ))}
                       </div>

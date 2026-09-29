@@ -70,7 +70,7 @@ describe("Agent tool approval safety", () => {
     });
 
     const response = await request(app)
-      .post("/api/chat/agent/tool-calls/00000000-0000-0000-0000-000000000000/approve")
+      .post("/api/v1/chat/agent/tool-calls/00000000-0000-0000-0000-000000000000/approve")
       .set("Authorization", `Bearer ${accessToken}`);
 
     expect(response.status).toBe(403);
@@ -142,8 +142,22 @@ describe("Agent tool approval safety", () => {
 
     expect(result.executed.approvalStatus).toBe("EXECUTED");
     expect(result.executed.status).toBe("completed");
-    expect(result.execution.output.externalWritePerformed).toBe(true);
-    expect(result.execution.output.integrationProvider).toBe("TICKETING_WEBHOOK");
+    const webhookOutput = result.execution as {
+      output: {
+        externalWritePerformed: boolean;
+        integrationProvider: string | null;
+        ticketId: string;
+      };
+    };
+    expect(webhookOutput.output.externalWritePerformed).toBe(true);
+    expect(webhookOutput.output.integrationProvider).toBe("TICKETING_WEBHOOK");
+    expect(webhookOutput.output.ticketId).toBeTruthy();
+
+    const tickets = await prisma.ticket.findMany({
+      where: { organizationId: membership.organizationId }
+    });
+    expect(tickets.length).toBe(1);
+    expect(tickets[0].subject).toBe("Subscription activation failed");
 
     const executionLogs = await prisma.integrationExecutionLog.findMany({
       where: {
@@ -154,6 +168,43 @@ describe("Agent tool approval safety", () => {
 
     expect(executionLogs.length).toBe(1);
     expect(executionLogs[0].status).toBe("completed");
+  });
+
+  it("creates a ticket without ticketing webhook integration", async () => {
+    const { user, membership } = await registerAndLoginTestUser({
+      role: "OWNER"
+    });
+
+    const { toolCall } = await createPendingToolCall({
+      organizationId: membership.organizationId,
+      userId: user.id
+    });
+
+    const result = await approveAgentToolCall({
+      userId: user.id,
+      toolCallRecordId: toolCall.id
+    });
+
+    expect(result.executed.approvalStatus).toBe("EXECUTED");
+    expect(result.executed.status).toBe("completed");
+    const noWebhookOutput = result.execution as {
+      output: {
+        created: boolean;
+        externalWritePerformed: boolean;
+        webhookSkipped: boolean;
+        ticketId: string;
+      };
+    };
+    expect(noWebhookOutput.output.created).toBe(true);
+    expect(noWebhookOutput.output.externalWritePerformed).toBe(false);
+    expect(noWebhookOutput.output.webhookSkipped).toBe(true);
+    expect(noWebhookOutput.output.ticketId).toBeTruthy();
+
+    const ticket = await prisma.ticket.findFirst({
+      where: { organizationId: membership.organizationId }
+    });
+    expect(ticket?.subject).toBe("Subscription activation failed");
+    expect(ticket?.priority).toBe("HIGH");
   });
 
   it("does not leak encrypted integration credentials in list API", async () => {
@@ -179,7 +230,7 @@ describe("Agent tool approval safety", () => {
     });
 
     const response = await request(app)
-      .get("/api/integrations")
+      .get("/api/v1/integrations")
       .set("Authorization", `Bearer ${accessToken}`);
 
     expect(response.status).toBe(200);

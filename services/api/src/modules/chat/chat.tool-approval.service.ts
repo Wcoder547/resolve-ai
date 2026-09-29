@@ -1,4 +1,4 @@
-import { AgentToolApprovalStatus, Prisma } from "@prisma/client";
+import { Prisma, TicketPriority } from "@prisma/client";
 import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 
@@ -6,15 +6,91 @@ import {
   executeSlackWebhook,
   executeTicketingWebhook,
 } from "../integrations/integration.providers.js";
+import { createTicketFromAgentTool } from "../tickets/ticket.service.js";
+
+function asOptionalString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function mapToolPriority(value: unknown): TicketPriority {
+  const normalized =
+    typeof value === "string" ? value.trim().toLowerCase() : "";
+
+  switch (normalized) {
+    case "low":
+      return TicketPriority.LOW;
+    case "high":
+      return TicketPriority.HIGH;
+    case "urgent":
+      return TicketPriority.URGENT;
+    case "medium":
+    default:
+      return TicketPriority.MEDIUM;
+  }
+}
 
 async function executeApprovedExternalTool(input: {
   organizationId: string;
   toolName: string;
   toolInput: Record<string, unknown>;
   metadata?: Record<string, unknown>;
+  approvedByUserId: string;
 }) {
   if (input.toolName === "create_support_ticket") {
-    const result = await executeTicketingWebhook(input);
+    const subject =
+      asOptionalString(input.toolInput.title) ||
+      asOptionalString(input.toolInput.subject) ||
+      "Support issue requires review";
+
+    const summary =
+      asOptionalString(input.toolInput.summary) ||
+      asOptionalString(input.toolInput.description);
+
+    const agentRunId = asOptionalString(input.metadata?.agentRunId);
+    let confidence = asOptionalString(input.toolInput.confidence);
+    let conversationId = asOptionalString(input.toolInput.conversationId);
+
+    if (agentRunId && (!confidence || !conversationId)) {
+      const agentRun = await prisma.agentRun.findFirst({
+        where: {
+          id: agentRunId,
+          organizationId: input.organizationId,
+        },
+        select: {
+          confidence: true,
+          conversationId: true,
+        },
+      });
+
+      if (!confidence) confidence = agentRun?.confidence ?? null;
+      if (!conversationId) conversationId = agentRun?.conversationId ?? null;
+    }
+
+    const ticket = await createTicketFromAgentTool({
+      organizationId: input.organizationId,
+      createdByUserId: input.approvedByUserId,
+      subject,
+      description: summary,
+      summary,
+      priority: mapToolPriority(input.toolInput.priority),
+      confidence,
+      customerName:
+        asOptionalString(input.toolInput.customerName) ||
+        asOptionalString(input.toolInput.customer),
+      customerEmail: asOptionalString(input.toolInput.customerEmail),
+      agentRunId,
+      conversationId,
+      metadata: {
+        toolCallId: input.metadata?.toolCallId ?? null,
+        toolCallRecordId: input.metadata?.toolCallRecordId ?? null,
+        source: "agent_tool_approval",
+        toolInput: input.toolInput,
+      },
+    });
+
+    const webhookResult = await executeTicketingWebhook(input);
 
     return {
       toolCallId: input.metadata?.toolCallId as string | undefined,
@@ -29,10 +105,20 @@ async function executeApprovedExternalTool(input: {
       output: {
         created: true,
         mockExecution: false,
-        externalWritePerformed: true,
-        integrationProvider: result.integrationProvider,
-        integrationId: result.integrationId,
-        response: result.response,
+        ticketId: ticket.id,
+        ticket: {
+          id: ticket.id,
+          subject: ticket.subject,
+          status: ticket.status,
+          priority: ticket.priority,
+          confidence: ticket.confidence,
+        },
+        externalWritePerformed: webhookResult.externalWritePerformed,
+        webhookSkipped: webhookResult.skipped,
+        webhookSkipReason: webhookResult.reason,
+        integrationProvider: webhookResult.integrationProvider,
+        integrationId: webhookResult.integrationId,
+        response: webhookResult.response,
       },
       error: null,
     };
@@ -224,6 +310,7 @@ export async function approveAgentToolCall(input: {
       organizationId: membership.organizationId,
       toolName: toolCall.toolName,
       toolInput: (toolCall.input || {}) as Record<string, unknown>,
+      approvedByUserId: input.userId,
       metadata: {
         organizationId: membership.organizationId,
         approvedByUserId: input.userId,

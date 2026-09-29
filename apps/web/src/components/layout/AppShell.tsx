@@ -4,9 +4,9 @@ import { useState, useEffect, type ReactNode } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
   LayoutDashboard, Database, MessageSquare, Ticket, AlertTriangle,
-  CheckSquare, Activity, BarChart3, Settings, BookOpen, User,
-  Bell, Upload, Search, ChevronDown, Menu, X, Zap, LogOut,
-  ChevronRight, Loader2
+  CheckSquare, Activity, BarChart3, Settings, User,
+  Bell, Upload, Search, ChevronDown, Menu, LogOut,
+  ChevronRight, Loader2, PanelLeftClose, PanelLeft
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Avatar, AvatarFallback } from "../ui/avatar";
@@ -18,6 +18,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/
 import { getAccessToken, getUser, getOrganization, saveOrganization, clearSession } from "@/lib/auth";
 import { getCurrentUser, getCurrentOrganization, logoutUser, listPendingToolCalls } from "@/lib/api";
 import type { AuthUser, AuthOrganization } from "@/types/auth";
+import { CommandPalette } from "./CommandPalette";
+import { ThemeToggle } from "../theme/ThemeToggle";
+import { ResolveLogo } from "../brand/ResolveLogo";
 
 type SidebarOrganization = AuthOrganization & { plan?: string };
 
@@ -33,26 +36,35 @@ const navItems = [
   { label: "Knowledge Base", icon: Database, path: "/knowledge" },
   { label: "AI Chat", icon: MessageSquare, path: "/chat" },
   { label: "Tickets", icon: Ticket, path: "/tickets" },
-  { label: "Incidents", icon: AlertTriangle, path: "/incidents", badge: "1", badgeVariant: "danger" },
-  { label: "Approvals", icon: CheckSquare, path: "/approvals", badgeVariant: "warning" },
+  { label: "Incidents", icon: AlertTriangle, path: "/incidents", preview: true },
+  { label: "Approvals", icon: CheckSquare, path: "/approvals", badgeVariant: "warning" as const },
   { label: "Agent Runs", icon: Activity, path: "/agent-runs" },
   { label: "Analytics", icon: BarChart3, path: "/analytics" },
 ];
 
 const bottomItems = [
   { label: "Settings", icon: Settings, path: "/settings" },
-  { label: "Documentation", icon: BookOpen, path: "#" },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Tooltips only after collapse settles — otherwise the close-button click
+  // leaves the pointer over a nav icon and a delay-0 tooltip flashes open.
+  const [collapsedTooltipsReady, setCollapsedTooltipsReady] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [org, setOrg] = useState<SidebarOrganization | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [pendingApprovals, setPendingApprovals] = useState<number | null>(null);
+  const [commandOpen, setCommandOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+
+  useEffect(() => {
+    if (sidebarOpen) {
+      setCollapsedTooltipsReady(false);
+    }
+  }, [sidebarOpen]);
 
   useEffect(() => {
     const token = getAccessToken();
@@ -127,6 +139,17 @@ export function AppShell({ children }: { children: ReactNode }) {
     };
   }, [checkingAuth]);
 
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const handleLogout = async () => {
     try {
       await logoutUser();
@@ -154,8 +177,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   if (checkingAuth) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#020617]">
-        <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
+      <div className="flex h-screen items-center justify-center bg-background">
+        <Loader2 className="w-5 h-5 text-brand animate-spin" />
       </div>
     );
   }
@@ -163,144 +186,191 @@ export function AppShell({ children }: { children: ReactNode }) {
   const currentPage = navItems.find(i => isActive(i.path))?.label ||
     bottomItems.find(i => isActive(i.path))?.label || "Overview";
 
-  // Approvals gets its badge from live data; everything else (currently just
-  // Incidents) still uses its static field until that has a real data source too.
   const resolveBadge = (item: (typeof navItems)[number]): string | undefined => {
     if (item.path === "/approvals") {
       return pendingApprovals && pendingApprovals > 0 ? String(pendingApprovals) : undefined;
     }
-    return item.badge;
+    return undefined;
   };
 
   return (
     <TooltipProvider>
-      <div className="flex h-screen bg-[#020617] text-slate-50 overflow-hidden">
+      <div className="flex h-screen bg-background text-foreground overflow-hidden">
         {/* Mobile sidebar overlay */}
         {mobileSidebarOpen && (
           <div
-            className="fixed inset-0 bg-black/60 z-40 lg:hidden"
+            className="fixed inset-0 bg-foreground/20 backdrop-blur-[1px] z-40 lg:hidden"
             onClick={() => setMobileSidebarOpen(false)}
           />
         )}
 
         {/* Sidebar */}
-        <aside className={`
+        <aside
+          className={`
           fixed lg:relative z-50 lg:z-auto
-          flex flex-col h-full bg-[#0F172A] border-r border-[#1E293B]
+          flex flex-col h-full bg-card border-r border-border
           transition-all duration-200
-          ${sidebarOpen ? "w-64" : "w-16"}
+          ${sidebarOpen ? "w-60" : "w-14"}
           ${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
-        `}>
+        `}
+          onMouseLeave={() => {
+            if (!sidebarOpen) setCollapsedTooltipsReady(true);
+          }}
+        >
           {/* Logo */}
-          <div className="flex items-center gap-3 px-4 h-14 border-b border-[#1E293B] shrink-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="w-7 h-7 rounded-lg bg-cyan-400/10 border border-cyan-400/30 flex items-center justify-center shrink-0">
-                <Zap className="w-4 h-4 text-cyan-400" />
-              </div>
-              {sidebarOpen && (
-                <span className="font-semibold text-slate-50 text-[15px] tracking-tight">
-                  Resolve<span className="text-cyan-400">AI</span>
-                </span>
+          <div className="flex items-center gap-2.5 px-3 h-14 border-b border-border shrink-0">
+            <div className="flex items-center gap-2.5 min-w-0">
+              {sidebarOpen ? (
+                <ResolveLogo variant="lockup" size={28} className="min-w-0" />
+              ) : (
+                <ResolveLogo variant="mark" className="size-7" />
               )}
             </div>
             {sidebarOpen && (
               <button
-                onClick={() => setSidebarOpen(false)}
-                className="ml-auto text-slate-500 hover:text-slate-300 transition-colors hidden lg:block"
+                onClick={() => {
+                  setSidebarOpen(false);
+                  setCollapsedTooltipsReady(false);
+                  (document.activeElement as HTMLElement | null)?.blur?.();
+                }}
+                className="ml-auto text-muted-foreground hover:text-foreground transition-colors hidden lg:block"
+                aria-label="Collapse sidebar"
               >
-                <ChevronRight className="w-4 h-4" />
+                <PanelLeftClose className="w-4 h-4" />
               </button>
             )}
           </div>
 
           {/* Workspace switcher */}
           {sidebarOpen && (
-            <div className="px-3 py-2 border-b border-[#1E293B]">
-              <button className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[#1E293B] transition-colors text-left">
-                <div className="w-5 h-5 rounded bg-violet-500/20 border border-violet-500/30 flex items-center justify-center shrink-0">
-                  <span className="text-[9px] font-bold text-violet-400">{org ? orgInitials(org.name) : "…"}</span>
+            <div className="px-2.5 py-2 border-b border-border">
+              <button
+                type="button"
+                onClick={() => router.push("/settings")}
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted transition-colors text-left"
+              >
+                <div className="w-5 h-5 rounded bg-muted border border-border flex items-center justify-center shrink-0">
+                  <span className="text-[9px] font-bold text-muted-foreground">
+                    {org ? orgInitials(org.name) : "…"}
+                  </span>
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-xs font-medium text-slate-200 truncate">{org?.name ?? "Loading…"}</div>
-                  <div className="text-[10px] text-slate-500">{org?.plan ? `${org.plan.charAt(0)}${org.plan.slice(1).toLowerCase()} plan` : "\u00A0"}</div>
+                  <div className="text-xs font-medium text-foreground truncate">
+                    {org?.name ?? "Loading…"}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {org?.plan ? `${org.plan.charAt(0)}${org.plan.slice(1).toLowerCase()} plan` : "\u00A0"}
+                  </div>
                 </div>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                <Settings className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
               </button>
             </div>
           )}
 
           {/* Nav items */}
-          <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
+          <nav className="flex-1 overflow-y-auto py-2.5 px-2 space-y-0.5">
             {navItems.map((item) => {
               const Icon = item.icon;
               const active = isActive(item.path);
               const badge = resolveBadge(item);
-              return (
-                <Tooltip key={item.path} delayDuration={0}>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={() => { router.push(item.path); setMobileSidebarOpen(false); }}
-                      className={`
-                        w-full flex items-center gap-3 px-2.5 py-2 rounded-lg text-sm transition-all duration-150
-                        ${active
-                          ? "bg-cyan-400/10 text-cyan-400 border border-cyan-400/20"
-                          : "text-slate-400 hover:text-slate-200 hover:bg-[#1E293B] border border-transparent"
-                        }
-                      `}
-                    >
-                      <Icon className={`w-4 h-4 shrink-0 ${active ? "text-cyan-400" : ""}`} />
-                      {sidebarOpen && (
-                        <>
-                          <span className="flex-1 text-left">{item.label}</span>
-                          {badge && (
-                            <span className={`
-                              text-[10px] font-semibold px-1.5 py-0.5 rounded-full
-                              ${item.badgeVariant === "danger" ? "bg-red-500/20 text-red-400" : "bg-yellow-500/20 text-yellow-400"}
-                            `}>
-                              {badge}
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </button>
-                  </TooltipTrigger>
-                  {!sidebarOpen && (
-                    <TooltipContent side="right" className="bg-slate-800 border-slate-700 text-slate-200">
-                      {item.label}
-                    </TooltipContent>
+              const navButton = (
+                <button
+                  onClick={() => { router.push(item.path); setMobileSidebarOpen(false); }}
+                  className={`
+                    relative w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-colors
+                    ${active
+                      ? "bg-brand-soft text-brand"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    }
+                  `}
+                >
+                  {active && (
+                    <span
+                      className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-full bg-brand"
+                      aria-hidden
+                    />
                   )}
+                  <Icon className={`w-4 h-4 shrink-0 ${active ? "text-brand" : ""}`} />
+                  {sidebarOpen && (
+                    <>
+                      <span className="flex-1 text-left truncate">{item.label}</span>
+                      {"preview" in item && item.preview ? (
+                        <span className="text-[9px] font-medium uppercase tracking-wide px-1.5 py-0.5 rounded border border-border text-muted-foreground bg-background">
+                          Preview
+                        </span>
+                      ) : null}
+                      {badge && (
+                        <span className={`
+                          text-[10px] font-semibold px-1.5 py-0.5 rounded-md tabular-nums
+                          ${item.badgeVariant === "warning"
+                            ? "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
+                            : "bg-brand-soft text-brand border border-brand/20"
+                          }
+                        `}>
+                          {badge}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </button>
+              );
+
+              if (!collapsedTooltipsReady) {
+                return <div key={item.path}>{navButton}</div>;
+              }
+
+              return (
+                <Tooltip key={item.path} delayDuration={400}>
+                  <TooltipTrigger asChild>
+                    {navButton}
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    {item.label}
+                  </TooltipContent>
                 </Tooltip>
               );
             })}
           </nav>
 
           {/* Bottom items */}
-          <div className="px-2 py-2 border-t border-[#1E293B] space-y-0.5">
+          <div className="px-2 py-2 border-t border-border space-y-0.5">
             {bottomItems.map((item) => {
               const Icon = item.icon;
               const active = isActive(item.path);
-              return (
-                <Tooltip key={item.path} delayDuration={0}>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={() => { router.push(item.path); setMobileSidebarOpen(false); }}
-                      className={`
-                        w-full flex items-center gap-3 px-2.5 py-2 rounded-lg text-sm transition-all duration-150
-                        ${active
-                          ? "bg-cyan-400/10 text-cyan-400 border border-cyan-400/20"
-                          : "text-slate-400 hover:text-slate-200 hover:bg-[#1E293B] border border-transparent"
-                        }
-                      `}
-                    >
-                      <Icon className="w-4 h-4  shrink-0" />
-                      {sidebarOpen && <span>{item.label}</span>}
-                    </button>
-                  </TooltipTrigger>
-                  {!sidebarOpen && (
-                    <TooltipContent side="right" className="bg-slate-800 border-slate-700 text-slate-200">
-                      {item.label}
-                    </TooltipContent>
+              const navButton = (
+                <button
+                  onClick={() => { router.push(item.path); setMobileSidebarOpen(false); }}
+                  className={`
+                    relative w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-colors
+                    ${active
+                      ? "bg-brand-soft text-brand"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    }
+                  `}
+                >
+                  {active && (
+                    <span
+                      className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-full bg-brand"
+                      aria-hidden
+                    />
                   )}
+                  <Icon className={`w-4 h-4 shrink-0 ${active ? "text-brand" : ""}`} />
+                  {sidebarOpen && <span>{item.label}</span>}
+                </button>
+              );
+
+              if (!collapsedTooltipsReady) {
+                return <div key={item.path}>{navButton}</div>;
+              }
+
+              return (
+                <Tooltip key={item.path} delayDuration={400}>
+                  <TooltipTrigger asChild>
+                    {navButton}
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    {item.label}
+                  </TooltipContent>
                 </Tooltip>
               );
             })}
@@ -308,33 +378,45 @@ export function AppShell({ children }: { children: ReactNode }) {
             {/* User profile */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="w-full flex items-center gap-3 px-2.5 py-2 rounded-lg text-sm text-slate-400 hover:text-slate-200 hover:bg-[#1E293B] transition-all duration-150">
+                <button className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
                   <Avatar className="w-6 h-6 shrink-0">
-                    <AvatarFallback className="bg-cyan-400/20 text-cyan-400 text-[10px] font-semibold">{initials || "?"}</AvatarFallback>
+                    <AvatarFallback className="bg-brand-soft text-brand text-[10px] font-semibold">
+                      {initials || "?"}
+                    </AvatarFallback>
                   </Avatar>
                   {sidebarOpen && (
                     <>
                       <div className="flex-1 text-left min-w-0">
-                        <div className="text-xs font-medium text-slate-300 truncate">{user?.name ?? "—"}</div>
-                        <div className="text-[10px] text-slate-500 truncate">{user?.email ?? ""}</div>
+                        <div className="text-xs font-medium text-foreground truncate">
+                          {user?.name ?? "—"}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground truncate">
+                          {user?.email ?? ""}
+                        </div>
                       </div>
                       <ChevronDown className="w-3 h-3 shrink-0" />
                     </>
                   )}
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-52 bg-slate-800 border-slate-700 text-slate-200" side="top" align="start">
-                <DropdownMenuItem className="text-slate-300 hover:text-white hover:bg-slate-700 cursor-pointer"
-                  onClick={() => router.push("/settings")}>
-                  <User className="w-4 h-4 mr-2" /> Profile
+              <DropdownMenuContent className="w-52" side="top" align="start">
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  onClick={() => router.push("/settings")}
+                >
+                  <User className="w-4 h-4 mr-2" /> Account
                 </DropdownMenuItem>
-                <DropdownMenuItem className="text-slate-300 hover:text-white hover:bg-slate-700 cursor-pointer"
-                  onClick={() => router.push("/settings")}>
-                  <Settings className="w-4 h-4 mr-2" /> Settings
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  onClick={() => router.push("/settings")}
+                >
+                  <Settings className="w-4 h-4 mr-2" /> Workspace settings
                 </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-slate-700" />
-                <DropdownMenuItem className="text-red-400 hover:text-red-300 hover:bg-slate-700 cursor-pointer"
-                  onClick={handleLogout}>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive cursor-pointer"
+                  onClick={handleLogout}
+                >
                   <LogOut className="w-4 h-4 mr-2" /> Sign out
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -343,12 +425,13 @@ export function AppShell({ children }: { children: ReactNode }) {
 
           {/* Collapsed expand button */}
           {!sidebarOpen && (
-            <div className="p-2 border-t border-[#1E293B]">
+            <div className="p-2 border-t border-border">
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="w-full flex items-center justify-center p-2 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-[#1E293B] transition-colors"
+                className="w-full flex items-center justify-center p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                aria-label="Expand sidebar"
               >
-                <Menu className="w-4 h-4" />
+                <PanelLeft className="w-4 h-4" />
               </button>
             </div>
           )}
@@ -357,27 +440,35 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* Main content */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Top header */}
-          <header className="h-14 flex items-center gap-4 px-4 lg:px-6 border-b border-[#1E293B] bg-[#020617] shrink-0">
+          <header className="h-14 flex items-center gap-3 px-4 lg:px-6 border-b border-border bg-card shrink-0">
             <button
               onClick={() => setMobileSidebarOpen(true)}
-              className="lg:hidden text-slate-500 hover:text-slate-300 transition-colors"
+              className="lg:hidden text-muted-foreground hover:text-foreground transition-colors"
             >
               <Menu className="w-5 h-5" />
             </button>
 
             {/* Breadcrumb */}
             <div className="flex items-center gap-1.5 text-sm flex-1 min-w-0">
-              <span className="text-slate-500">{org?.name ?? "Workspace"}</span>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-              <span className="text-slate-300 font-medium truncate">{currentPage}</span>
+              <span className="text-muted-foreground truncate">{org?.name ?? "Workspace"}</span>
+              <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/60 shrink-0" />
+              <span className="text-foreground font-medium truncate">{currentPage}</span>
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-2">
-              <button className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#334155] text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-all text-sm">
+            <div className="flex items-center gap-1.5">
+              <ThemeToggle />
+
+              <button
+                type="button"
+                onClick={() => setCommandOpen(true)}
+                className="hidden sm:flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-border bg-background text-muted-foreground hover:text-foreground hover:bg-muted transition-colors text-sm"
+              >
                 <Search className="w-3.5 h-3.5" />
-                <span className="hidden md:block text-xs">Search...</span>
-                <kbd className="hidden md:block text-[10px] bg-slate-800 text-slate-500 px-1 rounded">⌘K</kbd>
+                <span className="hidden md:block text-xs">Search</span>
+                <kbd className="hidden md:inline-flex items-center text-[10px] font-medium bg-muted text-muted-foreground px-1.5 py-0.5 rounded border border-border">
+                  ⌘K
+                </kbd>
               </button>
 
               <Tooltip>
@@ -385,18 +476,18 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="text-slate-400 hover:text-slate-200 hover:bg-[#1E293B]"
+                    className="text-muted-foreground hover:text-foreground"
                     onClick={() => router.push("/knowledge")}
                   >
                     <Upload className="w-4 h-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent className="bg-slate-800 border-slate-700 text-slate-200">Upload knowledge</TooltipContent>
+                <TooltipContent>Upload knowledge</TooltipContent>
               </Tooltip>
 
               <Button
                 size="sm"
-                className="bg-cyan-400 text-slate-950 hover:bg-cyan-300 font-medium text-xs px-3"
+                className="rounded-full bg-brand text-brand-foreground hover:bg-brand/90 font-medium text-xs px-3.5"
                 onClick={() => router.push("/chat")}
               >
                 <MessageSquare className="w-3.5 h-3.5 mr-1" />
@@ -405,21 +496,33 @@ export function AppShell({ children }: { children: ReactNode }) {
 
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button className="relative p-2 text-slate-400 hover:text-slate-200 transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => router.push("/approvals")}
+                    className="relative p-2 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-muted"
+                    aria-label="Approvals"
+                  >
                     <Bell className="w-4 h-4" />
-                    <span className="absolute top-1 right-1 w-2 h-2 bg-cyan-400 rounded-full" />
+                    {pendingApprovals && pendingApprovals > 0 ? (
+                      <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-brand rounded-full" />
+                    ) : null}
                   </button>
                 </TooltipTrigger>
-                <TooltipContent className="bg-slate-800 border-slate-700 text-slate-200">Notifications</TooltipContent>
+                <TooltipContent>
+                  {pendingApprovals && pendingApprovals > 0
+                    ? `${pendingApprovals} pending approval${pendingApprovals === 1 ? "" : "s"}`
+                    : "No pending approvals"}
+                </TooltipContent>
               </Tooltip>
             </div>
           </header>
 
           {/* Page content */}
-          <main className="flex-1 overflow-y-auto">
+          <main className="flex-1 overflow-y-auto bg-background">
             {children}
           </main>
         </div>
+        <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} />
       </div>
     </TooltipProvider>
   );

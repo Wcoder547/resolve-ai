@@ -7,7 +7,7 @@ export function StatusBadge({ value }: StatusBadgeProps) {
 
   const styles =
     normalized.includes("failed") || normalized.includes("error")
-      ? "bg-red-50 text-red-700 border-red-200"
+      ? "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800"
       : normalized.includes("pending")
         ? "bg-yellow-50 text-yellow-800 border-yellow-200"
         : normalized.includes("warning") || normalized.includes("guardrail")
@@ -16,7 +16,7 @@ export function StatusBadge({ value }: StatusBadgeProps) {
               normalized.includes("executed") ||
               normalized.includes("success")
             ? "bg-green-50 text-green-700 border-green-200"
-            : "bg-slate-50 text-slate-700 border-slate-200";
+            : "bg-muted text-muted-foreground border-border";
 
   return (
     <span

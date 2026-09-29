@@ -131,18 +131,29 @@ export async function executeTicketingWebhook(input: ExecuteExternalToolInput) {
   });
 
   if (!integration?.credentials.webhookUrl) {
-    throw createConflictError("No active ticketing webhook integration found.");
+    return {
+      skipped: true as const,
+      reason: "No active ticketing webhook integration found.",
+      integrationProvider: null,
+      integrationId: null,
+      externalWritePerformed: false,
+      response: null
+    };
   }
 
   const title =
     typeof input.toolInput.title === "string"
       ? input.toolInput.title
-      : "ResolveAI support ticket";
+      : typeof input.toolInput.subject === "string"
+        ? input.toolInput.subject
+        : "ResolveAI support ticket";
 
   const summary =
     typeof input.toolInput.summary === "string"
       ? input.toolInput.summary
-      : "No summary provided.";
+      : typeof input.toolInput.description === "string"
+        ? input.toolInput.description
+        : "No summary provided.";
 
   const priority =
     typeof input.toolInput.priority === "string"
@@ -182,6 +193,8 @@ export async function executeTicketingWebhook(input: ExecuteExternalToolInput) {
     });
 
     return {
+      skipped: false as const,
+      reason: null,
       integrationProvider: "TICKETING_WEBHOOK" as IntegrationProvider,
       integrationId: integration.id,
       externalWritePerformed: true,
@@ -206,6 +219,14 @@ export async function executeTicketingWebhook(input: ExecuteExternalToolInput) {
       error: errorMessage
     });
 
-    throw error;
+    // Soft-fail: ticket row is still created by the caller.
+    return {
+      skipped: true as const,
+      reason: errorMessage,
+      integrationProvider: "TICKETING_WEBHOOK" as IntegrationProvider,
+      integrationId: integration.id,
+      externalWritePerformed: false,
+      response: null
+    };
   }
 }
