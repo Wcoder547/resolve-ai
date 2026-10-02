@@ -126,6 +126,43 @@ Instructions:
 """
 
 
+def _empty_context_refusal(payload: RagChatRequest, prompt_version: str):
+    answer = "\n".join(
+        [
+            "## Direct Answer",
+            "I could not find relevant information in the retrieved knowledge base context for this question.",
+            "",
+            "## Recommended Steps",
+            "1. Upload or complete ingestion for documentation that covers this topic.",
+            "2. Rephrase with product-specific terms from your knowledge base.",
+            "3. Escalate to a human agent if this is customer-impacting.",
+        ]
+    )
+    return {
+        "answer": answer,
+        "sources": payload.sources,
+        "citations": [],
+        "model": "none",
+        "provider": "none",
+        "usage": build_usage(prompt_text="", completion_text=answer),
+        "grounded": False,
+        "confidence": "low",
+        "needsEscalation": True,
+        "escalationReason": "No relevant retrieved context was available.",
+        "guardrails": {
+            "approved": True,
+            "grounded": False,
+            "hasCitations": False,
+            "citationCount": 0,
+            "riskLevel": "low",
+            "unsupportedReason": None,
+        },
+        "promptVersion": prompt_version,
+        "fallbackUsed": False,
+        "providerErrors": [],
+    }
+
+
 def generate_rag_answer(payload: RagChatRequest):
     settings = get_settings()
     provider_chain = get_llm_provider_chain()
@@ -136,6 +173,9 @@ def generate_rag_answer(payload: RagChatRequest):
         )
 
     citation_catalog = build_citation_catalog(payload.sources)
+    if not payload.context.strip() or not citation_catalog:
+        return _empty_context_refusal(payload, settings.rag_prompt_version)
+
     citation_catalog_text = build_citation_catalog_text(citation_catalog)
 
     provider_errors = []
@@ -164,9 +204,6 @@ def generate_rag_answer(payload: RagChatRequest):
                     raw_answer_str = parsed_dict.get("text", raw_answer_str)
                 except Exception:
                     pass
-
-            print(f"--- RAW OUTPUT FROM {provider_name} ---")
-            print(raw_answer_str)
 
             # --- FIX 2: Call validation only once and pass the cleaned string ---
             validated_answer = validate_and_format_rag_answer(
@@ -197,12 +234,28 @@ def generate_rag_answer(payload: RagChatRequest):
         except Exception as error:
             error_message = str(error)
             provider_errors.append(f"{provider_name}: {error_message}")
-            print(f"--- VALIDATION FAILED FOR {provider_name} ---", error_message)
+            # Continue to next provider
+            continue
 
-    raise RuntimeError(
-        "All configured LLM providers failed or returned ungrounded answers. "
+    # Prefer a safe refusal over a hard 500 when providers fail validation.
+    refusal = _empty_context_refusal(payload, settings.rag_prompt_version)
+    refusal["providerErrors"] = provider_errors
+    refusal["escalationReason"] = (
+        "All configured LLM providers failed to produce a grounded answer. "
         + " | ".join(provider_errors)
     )
+    refusal["answer"] = "\n".join(
+        [
+            "## Direct Answer",
+            "I could not generate a reliable grounded answer from the available providers.",
+            "",
+            "## Recommended Steps",
+            "1. Retry the question in a moment.",
+            "2. Check AI provider configuration if this continues.",
+            "3. Escalate to a human agent if this is customer-impacting.",
+        ]
+    )
+    return refusal
 
 
 def build_stream_user_prompt(payload: RagChatRequest, citation_catalog_text: str) -> str:
@@ -245,8 +298,12 @@ def _finalize_streamed_answer(
 ):
     settings = get_settings()
     used_labels = extract_citation_labels(raw_markdown)
+    valid_labels = {f"[{item['label']}]" for item in citation_catalog}
+    invalid_labels = [label for label in used_labels if label not in valid_labels]
+    # Drop invented citation labels from the stream answer metadata.
+    safe_labels = [label for label in used_labels if label in valid_labels]
     citations = build_citations(
-        used_labels=used_labels,
+        used_labels=safe_labels,
         citation_catalog=citation_catalog,
         reason_map={},
     )
@@ -256,16 +313,24 @@ def _finalize_streamed_answer(
         "could not find" in lowered
         or "does not contain" in lowered
         or "not enough" in lowered
+        or "no relevant" in lowered
     )
 
     if is_fallback:
         grounded = False
         approved = True
         confidence = "low"
+        needs_escalation = True
+    elif invalid_labels and settings.rag_require_citations:
+        grounded = False
+        approved = False
+        confidence = "low"
+        needs_escalation = True
     else:
         approved = has_citations if settings.rag_require_citations else True
         grounded = approved
         confidence = "high" if has_citations else "medium"
+        needs_escalation = False
 
     return {
         "answer": raw_markdown.strip(),
@@ -282,8 +347,12 @@ def _finalize_streamed_answer(
         ),
         "grounded": grounded,
         "confidence": confidence,
-        "needsEscalation": False,
-        "escalationReason": None,
+        "needsEscalation": needs_escalation,
+        "escalationReason": (
+            "Streamed answer used invalid citation labels."
+            if invalid_labels and not is_fallback
+            else ("No relevant retrieved context." if is_fallback else None)
+        ),
         "guardrails": {
             "approved": approved,
             "grounded": grounded,
@@ -299,6 +368,7 @@ def _finalize_streamed_answer(
 
 
 def stream_rag_answer(payload: RagChatRequest):
+    settings = get_settings()
     provider_chain = get_llm_provider_chain()
 
     if not provider_chain:
@@ -309,6 +379,15 @@ def stream_rag_answer(payload: RagChatRequest):
         return
 
     citation_catalog = build_citation_catalog(payload.sources)
+    if not payload.context.strip() or not citation_catalog:
+        yield {
+            "type": "done",
+            "data": _empty_context_refusal(
+                payload, f"{settings.rag_prompt_version}-stream"
+            ),
+        }
+        return
+
     citation_catalog_text = build_citation_catalog_text(citation_catalog)
     user_prompt = build_stream_user_prompt(payload, citation_catalog_text)
     provider_errors: list[str] = []

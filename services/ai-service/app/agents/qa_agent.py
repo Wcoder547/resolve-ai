@@ -4,7 +4,7 @@ from app.config.settings import get_settings
 from app.agents.agent_utils import (
     build_source_catalog,
     build_source_catalog_text,
-    compact_text,
+    truncate_preserving_structure,
     run_json_agent,
 )
 from app.schemas.agents import AgentResolveRequest
@@ -90,7 +90,7 @@ Source catalog:
 {source_catalog_text}
 
 Retrieved context:
-{compact_text(payload.context, 9000)}
+{truncate_preserving_structure(payload.context, 9000)}
 
 Tool execution results:
 {tool_results or []}

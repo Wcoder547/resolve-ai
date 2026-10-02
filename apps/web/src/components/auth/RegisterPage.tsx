@@ -109,12 +109,21 @@ export function RegisterPage() {
         password: form.password,
         organizationName: form.org,
       });
-      saveTokens(res.data.tokens, true);
-      saveUser(res.data.user);
-      saveOrganization(res.data.organization);
-      router.push(
-        `/auth/check-email?email=${encodeURIComponent(form.email.trim())}`,
-      );
+      // Only persist a session once email is verified (or verification is off).
+      // Unverified users go to check-email without an app session.
+      const verified =
+        Boolean(res.data.user.emailVerified) ||
+        Boolean(res.data.user.emailVerifiedAt);
+      if (verified) {
+        saveTokens(res.data.tokens, true);
+        saveUser(res.data.user);
+        saveOrganization(res.data.organization);
+        router.push("/dashboard");
+      } else {
+        router.push(
+          `/auth/check-email?email=${encodeURIComponent(form.email.trim())}`,
+        );
+      }
     } catch (err) {
       if (err instanceof ApiError && err.errors) {
         const mapped: Record<string, string> = { form: err.message };

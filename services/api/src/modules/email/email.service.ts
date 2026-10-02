@@ -9,31 +9,71 @@ type SendEmailInput = {
   text: string;
 };
 
-function hasSmtpConfig() {
-  return Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS);
+type ResolvedTransport = {
+  source: "resend" | "smtp";
+  transporter: nodemailer.Transporter;
+  from: string;
+};
+
+function resolveTransport(): ResolvedTransport | null {
+  // Prefer Resend free tier (same pattern as Vynuro internal tool).
+  if (env.RESEND_API_KEY) {
+    const from =
+      env.RESEND_FROM || env.EMAIL_FROM || "ResolveAI <onboarding@resend.dev>";
+
+    return {
+      source: "resend",
+      transporter: nodemailer.createTransport({
+        host: "smtp.resend.com",
+        port: 465,
+        secure: true,
+        auth: {
+          user: "resend",
+          pass: env.RESEND_API_KEY,
+        },
+        connectionTimeout: 15_000,
+        greetingTimeout: 15_000,
+      }),
+      from,
+    };
+  }
+
+  if (env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS) {
+    return {
+      source: "smtp",
+      transporter: nodemailer.createTransport({
+        host: env.SMTP_HOST,
+        port: env.SMTP_PORT,
+        secure: env.SMTP_SECURE,
+        auth: {
+          user: env.SMTP_USER,
+          pass: env.SMTP_PASS,
+        },
+        connectionTimeout: 15_000,
+        greetingTimeout: 15_000,
+      }),
+      from: env.EMAIL_FROM,
+    };
+  }
+
+  return null;
 }
 
-function createTransporter() {
-  return nodemailer.createTransport({
-    host: env.SMTP_HOST,
-    port: env.SMTP_PORT,
-    secure: env.SMTP_SECURE,
-    auth: {
-      user: env.SMTP_USER,
-      pass: env.SMTP_PASS,
-    },
-  });
+export function isEmailConfigured() {
+  return resolveTransport() !== null;
 }
 
 export async function sendEmail(input: SendEmailInput) {
-  if (!hasSmtpConfig()) {
+  const resolved = resolveTransport();
+
+  if (!resolved) {
     logger.warn(
       {
         to: input.to,
         subject: input.subject,
         text: input.text,
       },
-      "SMTP is not configured. Email was not sent. Development fallback logged.",
+      "Email is not configured (Resend or SMTP). Message was not sent. Development fallback logged.",
     );
 
     return {
@@ -42,19 +82,38 @@ export async function sendEmail(input: SendEmailInput) {
     };
   }
 
-  const transporter = createTransporter();
+  try {
+    await resolved.transporter.sendMail({
+      from: resolved.from,
+      to: input.to,
+      subject: input.subject,
+      html: input.html,
+      text: input.text,
+    });
 
-  await transporter.sendMail({
-    from: env.EMAIL_FROM,
-    to: input.to,
-    subject: input.subject,
-    html: input.html,
-    text: input.text,
-  });
+    return {
+      sent: true as const,
+      source: resolved.source,
+    };
+  } catch (error) {
+    logger.error(
+      {
+        to: input.to,
+        subject: input.subject,
+        source: resolved.source,
+        error: {
+          name: error instanceof Error ? error.name : "UnknownError",
+          message: error instanceof Error ? error.message : "Unknown mail error",
+        },
+      },
+      "Failed to send email",
+    );
 
-  return {
-    sent: true as const,
-  };
+    return {
+      sent: false as const,
+      reason: "EMAIL_SEND_FAILED" as const,
+    };
+  }
 }
 
 export async function sendVerificationEmail(input: {

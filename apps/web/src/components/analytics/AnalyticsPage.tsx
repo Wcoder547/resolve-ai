@@ -325,7 +325,7 @@ export function AnalyticsPage() {
               compact
               variant="analytics"
               title="No runs in this range"
-              description="Ask questions in Chat to populate activity charts."
+              description="Agentic Chat runs appear here. Plain knowledge Q&A uses RAG and shows under Plan & usage instead."
               action={
                 <Button size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90 text-xs" onClick={() => router.push("/chat")}>
                   Ask AI

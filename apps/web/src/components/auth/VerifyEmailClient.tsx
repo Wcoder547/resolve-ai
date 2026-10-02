@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { resendEmailVerification, verifyEmail } from "@/lib/api";
+import { canShowDevAuthLinks } from "@/lib/dev-auth-links";
 import { Button } from "../ui/button";
 import { AuthShell } from "./AuthShell";
 
@@ -60,7 +61,7 @@ export function VerifyEmailClient({ token }: VerifyEmailClientProps) {
     try {
       const res = await resendEmailVerification(resendEmail.trim());
       setResendMessage(
-        res.data?.devVerificationUrl
+        canShowDevAuthLinks() && res.data?.devVerificationUrl
           ? `Development verification link: ${res.data.devVerificationUrl}`
           : res.message ||
               "If an account exists and is unverified, a verification email has been sent.",

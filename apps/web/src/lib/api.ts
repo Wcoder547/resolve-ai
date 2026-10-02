@@ -1301,7 +1301,7 @@ export function updateNotificationPreferences(
   );
 }
 
-export function updateOrganizationPlan(plan: "FREE" | "PRO" | "TEAM") {
+export function updateOrganizationPlan(plan: "FREE") {
   const token = getAccessToken();
 
   if (!token) {

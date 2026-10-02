@@ -221,6 +221,24 @@ function AssistantMessage({
           <Zap className="w-3 h-3 text-brand" />
         </div>
         <span className="text-xs font-semibold text-foreground/80">ResolveAI</span>
+        {msg.askMode === "agent" ? (
+          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
+            Agent
+          </span>
+        ) : null}
+        {msg.confidence ? (
+          <span
+            className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${
+              msg.confidence === "high"
+                ? "bg-signal-soft text-signal border-signal/20"
+                : msg.confidence === "low"
+                  ? "bg-amber-50 text-amber-800 border-amber-200"
+                  : "bg-muted text-muted-foreground border-border"
+            }`}
+          >
+            {msg.confidence} confidence
+          </span>
+        ) : null}
       </div>
 
       {/* Answer body */}
@@ -308,7 +326,7 @@ function AssistantMessage({
           </div>
         )}
 
-        {!msg.grounded && !msg.streaming && (
+        {!msg.streaming && msg.grounded === false && (
           <div className="bg-red-400/5 border border-red-200 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-1">
               <AlertCircle className="w-4 h-4 text-red-700" />
@@ -555,18 +573,20 @@ export function ChatPage() {
     }
 
     const res = await askAgenticChatQuestion(question, conversationId ?? undefined);
+    const agentRun = res.data.agentRun;
+    const retrievedChunks = res.data.retrievedChunks ?? [];
     const assistantMsg: Message = {
       id: res.data.messageId ?? `${Date.now()}-a`,
       role: "assistant",
       content: res.data.answer,
       grounded: res.data.grounded,
       confidence: res.data.confidence ?? null,
-      model: res.data.agentRun.model,
-      provider: res.data.agentRun.provider,
+      model: agentRun?.model ?? null,
+      provider: agentRun?.provider ?? null,
       askMode: "agent",
       sources:
-        res.data.retrievedChunks.length > 0
-          ? fromRetrievedChunks(res.data.retrievedChunks)
+        retrievedChunks.length > 0
+          ? fromRetrievedChunks(retrievedChunks)
           : undefined,
     };
     return { assistantMsg, conversationId: res.data.conversationId };
@@ -585,7 +605,12 @@ export function ChatPage() {
     setInput("");
     setSending(true);
     setThinking(true);
-    setThinkingLabel("ResolveAI is checking your knowledge base...");
+    const askPath = resolveAutoChatAskMode(question);
+    setThinkingLabel(
+      askPath === "agent"
+        ? "Running multi-agent resolution..."
+        : "ResolveAI is checking your knowledge base...",
+    );
     streamingIdRef.current = null;
     streamingContentRef.current = "";
 

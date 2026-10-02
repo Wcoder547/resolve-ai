@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
+import { ZodError } from "zod";
 import { isProduction } from "../config/env.js";
 import { logger } from "../lib/logger.js";
 
@@ -12,6 +13,8 @@ function getStatusCode(error: AppError) {
   if (error.statusCode) return error.statusCode;
   if (error.status) return error.status;
 
+  if (error instanceof ZodError) return 400;
+  if (error.name === "ZodError") return 400;
   if (error.name === "BadRequestError") return 400;
   if (error.name === "UnauthorizedError") return 401;
   if (error.name === "ForbiddenError") return 403;
@@ -54,6 +57,14 @@ export function errorMiddleware(
     },
     "Request failed",
   );
+
+  if (error instanceof ZodError) {
+    return res.status(400).json({
+      success: false,
+      message: "Validation failed.",
+      errors: error.flatten().fieldErrors,
+    });
+  }
 
   return res.status(statusCode).json({
     success: false,

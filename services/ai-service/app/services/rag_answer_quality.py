@@ -229,8 +229,22 @@ def validate_and_format_rag_answer(
     if invalid_labels:
         raise ValueError(f"Model used invalid citations: {', '.join(invalid_labels)}")
 
-    # --- FIX: Determine if the model safely backed out due to missing context ---
-    is_fallback_response = needs_escalation or confidence == "low"
+    # Only treat as a safe no-context fallback when the model admits low confidence
+    # and does not invent citations. Escalation alone must not waive citation rules.
+    refusal_markers = (
+        "not enough information",
+        "could not find",
+        "no relevant",
+        "does not contain",
+        "missing from the",
+        "not in the retrieved",
+        "unable to answer from",
+    )
+    lowered_answer = direct_answer.lower()
+    looks_like_refusal = any(marker in lowered_answer for marker in refusal_markers)
+    is_fallback_response = confidence == "low" and (
+        looks_like_refusal or (not used_labels and not recommended_steps)
+    )
 
     # Enforce citation presence only if it is NOT an expected fallback/out-of-context response
     if settings.rag_require_citations and not used_labels and not is_fallback_response:

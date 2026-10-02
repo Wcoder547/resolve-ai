@@ -3,7 +3,7 @@ import { PricingPage } from "@/components/marketing/PricingPage";
 
 export const metadata: Metadata = {
   title: "Pricing",
-  description: "Simple ResolveAI plans for teams evaluating and scaling grounded AI support.",
+  description: "ResolveAI is completely free — grounded AI support with usage limits, no paid tiers.",
 };
 
 export default function Page() {

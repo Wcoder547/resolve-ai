@@ -325,7 +325,7 @@ export function AgentRunsPage() {
               description={
                 search
                   ? "Try a different search."
-                  : "Ask a question in Chat — every grounded run appears here with a full trace."
+                  : "Agentic Chat questions (tickets, investigation, escalations) create runs here. Everyday RAG Q&A does not."
               }
             />
           ) : filtered.map(run => {

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Mail } from "lucide-react";
 import { Button } from "../ui/button";
 import { resendEmailVerification } from "@/lib/api";
+import { canShowDevAuthLinks } from "@/lib/dev-auth-links";
 import { AuthShell } from "./AuthShell";
 
 type CheckEmailClientProps = {
@@ -24,7 +25,7 @@ export function CheckEmailClient({ email }: CheckEmailClientProps) {
     try {
       const res = await resendEmailVerification(email);
       setMessage(
-        res.data?.devVerificationUrl
+        canShowDevAuthLinks() && res.data?.devVerificationUrl
           ? `Development verification link: ${res.data.devVerificationUrl}`
           : res.message ||
               "If an account exists and is unverified, a verification email has been sent.",

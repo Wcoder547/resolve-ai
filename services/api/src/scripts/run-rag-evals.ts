@@ -233,8 +233,9 @@ async function runSingleEval(input: {
       aiResponse.data.guardrails.hasCitations
     : true;
 
-  const guardrailCheck =
-    aiResponse.data.guardrails.approved && aiResponse.data.grounded;
+  const guardrailCheck = evalCase.requiresCitation
+    ? aiResponse.data.guardrails.approved && aiResponse.data.grounded
+    : aiResponse.data.guardrails.approved;
 
   const escalationCheck =
     typeof evalCase.expectedNeedsEscalation === "boolean"

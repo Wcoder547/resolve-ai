@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { resendEmailVerification } from "@/lib/api";
+import { canShowDevAuthLinks } from "@/lib/dev-auth-links";
 
 export function ResendVerificationButton() {
   const [loading, setLoading] = useState(false);
@@ -17,7 +18,7 @@ export function ResendVerificationButton() {
       const response = await resendEmailVerification();
 
       setMessage(
-        response.data?.devVerificationUrl
+        canShowDevAuthLinks() && response.data?.devVerificationUrl
           ? `Development verification link: ${response.data.devVerificationUrl}`
           : response.message ||
               "Verification email sent. Please check your inbox.",

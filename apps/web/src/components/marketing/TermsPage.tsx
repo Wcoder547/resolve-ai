@@ -68,12 +68,12 @@ export function TermsPage() {
           </div>
           <div>
             <h2 className="mb-2 font-display text-xl font-semibold text-foreground">
-              5. Billing
+              5. Pricing
             </h2>
             <p>
-              Paid plans (Pro, Team) may be selected in Settings for evaluation.
-              Automated payment collection may not be enabled in all environments.
-              Fees, if charged, are non-refundable except where required by law.
+              ResolveAI is free for all workspaces. Usage may be limited per
+              organization to keep the service sustainable. There are no paid
+              plan upgrades.
             </p>
           </div>
           <div>

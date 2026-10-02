@@ -2,6 +2,7 @@
 import { signAccessToken, verifyRefreshToken } from "../../utils/jwt.js";
 import { comparePassword, hashPassword } from "../../utils/password.js";
 import { Prisma } from "@prisma/client";
+import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
 import type {
@@ -25,6 +26,20 @@ function createSafeUnauthorizedError() {
     "Invalid email or password.",
     "INVALID_CREDENTIALS",
   );
+}
+
+function assertEmailVerifiedForAuth(user: { emailVerifiedAt: Date | null }) {
+  if (!env.EMAIL_VERIFICATION_ENABLED) {
+    return;
+  }
+
+  if (!user.emailVerifiedAt) {
+    throw createAuthError(
+      "ForbiddenError",
+      "Please verify your email before continuing.",
+      "EMAIL_NOT_VERIFIED",
+    );
+  }
 }
 
 function toAuthUser(user: {
@@ -83,7 +98,11 @@ export async function registerUser(data: RegisterInput) {
       data: {
         name: data.name,
         email: data.email,
-        passwordHash
+        passwordHash,
+        // When verification is disabled, treat registration as already verified.
+        ...(env.EMAIL_VERIFICATION_ENABLED
+          ? {}
+          : { emailVerifiedAt: new Date() }),
       }
     });
 
@@ -179,13 +198,7 @@ export async function loginUser(data: LoginInput) {
     throw createSafeUnauthorizedError();
   }
 
-  if (!user.emailVerifiedAt) {
-    throw createAuthError(
-      "ForbiddenError",
-      "Please verify your email before logging in.",
-      "EMAIL_NOT_VERIFIED",
-    );
-  }
+  assertEmailVerifiedForAuth(user);
 
   const organization = user.memberships[0]?.organization || null;
   const membership = user.memberships[0] || null;
@@ -261,13 +274,7 @@ export async function refreshUserToken(data: RefreshInput) {
     );
   }
 
-  if (!user.emailVerifiedAt) {
-    throw createAuthError(
-      "ForbiddenError",
-      "Please verify your email before continuing.",
-      "EMAIL_NOT_VERIFIED",
-    );
-  }
+  assertEmailVerifiedForAuth(user);
 
   const incomingTokenHash = hashRefreshToken(data.refreshToken);
 

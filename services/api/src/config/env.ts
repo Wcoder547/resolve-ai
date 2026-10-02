@@ -47,6 +47,11 @@ const envSchema = z
       .max(168)
       .default(72),
 
+    // Resend (preferred free tier) — Nodemailer SMTP bridge to smtp.resend.com
+    RESEND_API_KEY: z.string().optional().default(""),
+
+    RESEND_FROM: z.string().optional().default(""),
+
     SMTP_HOST: z.string().optional().default(""),
 
     SMTP_PORT: z.coerce.number().min(1).max(65535).default(587),
@@ -165,7 +170,7 @@ const envSchema = z
 
     RAG_TERM_COVERAGE_WEIGHT: z.coerce.number().min(0).max(1).default(0.1),
 
-    RAG_MIN_HYBRID_SCORE: z.coerce.number().min(0).max(1).default(0.05),
+    RAG_MIN_HYBRID_SCORE: z.coerce.number().min(0).max(1).default(0.12),
 
     RAG_EVAL_USER_EMAIL: z
       .email()

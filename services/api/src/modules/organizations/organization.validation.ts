@@ -17,8 +17,9 @@ export const deleteOrganizationSchema = z.object({
   confirmName: z.string().trim().min(1, "Type the organization name to confirm."),
 });
 
+/** Free product — only FREE is accepted for plan updates. */
 export const updateOrganizationPlanSchema = z.object({
-  plan: z.enum(["FREE", "PRO", "TEAM"]),
+  plan: z.enum(["FREE"]),
 });
 
 export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>;

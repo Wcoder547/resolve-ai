@@ -411,6 +411,8 @@ export async function askRagQuestion(userId: string, input: AskQuestionInput) {
     hasRelevantContext,
   } = await setupRagAsk(userId, input);
 
+  await assertOrganizationAiUsageAllowed(membership.organizationId);
+
   if (!hasRelevantContext) {
     const fallbackAnswer = createNoContextAnswer();
 
@@ -713,6 +715,8 @@ export async function* streamRagQuestion(
     topScore,
     hasRelevantContext,
   } = await setupRagAsk(userId, input);
+
+  await assertOrganizationAiUsageAllowed(membership.organizationId);
 
   if (!hasRelevantContext) {
     const result = await persistNoContextAnswer({

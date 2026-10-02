@@ -325,6 +325,14 @@ export async function updateOrganizationPlan(
     throw createError("ForbiddenError", "Only the owner can change the workspace plan.");
   }
 
+  // ResolveAI is completely free — paid / higher tiers are not offered.
+  if (input.plan !== "FREE") {
+    throw createError(
+      "BadRequestError",
+      "ResolveAI is free for all workspaces. Paid plan upgrades are not available.",
+    );
+  }
+
   const organization = await prisma.organization.findUnique({
     where: { id: organizationId },
   });

@@ -272,6 +272,8 @@ resolve-ai/
 
 **DevOps flavor:** Docker, Caddy, Prometheus/Grafana, GitHub Actions, backup/rollback scripts — treated as a production-style SaaS, not a toy.
 
+**Free product launch:** See [`docs/PRODUCTION_CHECKLIST.md`](./docs/PRODUCTION_CHECKLIST.md), [`.env.production.example`](./.env.production.example), [`docs/QA_PRELAUNCH_REPORT.md`](./docs/QA_PRELAUNCH_REPORT.md), and [`docs/AI_QUALITY_REPORT.md`](./docs/AI_QUALITY_REPORT.md). Email uses Resend (or SMTP) for verify / forgot-password / invites.
+
 ---
 
 ## 8. Mental model to remember

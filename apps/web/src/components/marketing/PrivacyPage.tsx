@@ -54,7 +54,7 @@ export function PrivacyPage() {
             </h2>
             <p>
               We use data to operate the product (authentication, retrieval,
-              agent execution, billing limits), improve reliability, and meet
+              agent execution, usage limits), improve reliability, and meet
               security obligations. Organization content is not used to train
               public foundation models.
             </p>

@@ -98,9 +98,20 @@ export function AppShell({ children }: { children: ReactNode }) {
 
     // Validate the token against the backend and refresh user info in the
     // background; if it's expired or invalid, boot back to login.
+    // Unverified users must verify before using the app shell.
     getCurrentUser()
       .then((res) => {
-        setUser(res.data.user);
+        const nextUser = res.data.user;
+        const verified =
+          Boolean(nextUser.emailVerified) || Boolean(nextUser.emailVerifiedAt);
+        if (!verified) {
+          clearSession();
+          router.replace(
+            `/auth/check-email?email=${encodeURIComponent(nextUser.email || "")}`,
+          );
+          return;
+        }
+        setUser(nextUser);
         setCheckingAuth(false);
       })
       .catch(() => {

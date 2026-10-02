@@ -403,23 +403,16 @@ export function FeatureVisual({
   );
 }
 
-/** Pricing page header visual. */
+/** Pricing page header visual — free product only. */
 export function PricingHeroVisual() {
   return (
     <div className="relative mx-auto mt-10 h-36 max-w-lg sm:h-44">
       <div className="absolute left-1/2 top-4 h-28 w-[70%] -translate-x-1/2 rotate-[-4deg] rounded-2xl border border-border bg-card opacity-60 shadow-lg sm:h-32" />
       <div className="absolute left-1/2 top-2 h-28 w-[75%] -translate-x-1/2 rotate-[2deg] rounded-2xl border border-border bg-card opacity-80 shadow-xl sm:h-32" />
-      <div className="absolute left-1/2 top-0 flex h-28 w-[80%] -translate-x-1/2 items-center justify-center gap-6 rounded-2xl border border-brand/30 bg-card shadow-[0_24px_60px_-20px_rgba(255,106,43,0.35)] sm:h-32">
-        {["Free", "Pro", "Team"].map((p, i) => (
-          <div key={p} className="text-center">
-            <div
-              className={`mx-auto mb-2 size-8 rounded-full ${
-                i === 1 ? "bg-brand" : "bg-muted"
-              }`}
-            />
-            <div className="text-xs font-semibold text-foreground">{p}</div>
-          </div>
-        ))}
+      <div className="absolute left-1/2 top-0 flex h-28 w-[80%] -translate-x-1/2 flex-col items-center justify-center gap-2 rounded-2xl border border-brand/30 bg-card shadow-[0_24px_60px_-20px_rgba(255,106,43,0.35)] sm:h-32">
+        <div className="size-10 rounded-full bg-brand" />
+        <div className="text-sm font-semibold text-foreground">Free forever</div>
+        <div className="text-[11px] text-muted-foreground">No Pro or Team upgrades</div>
       </div>
     </div>
   );

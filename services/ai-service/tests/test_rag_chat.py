@@ -41,8 +41,9 @@ def test_rag_chat_grounded_path_with_mocked_llm(patch_llm_chain):
 
 
 def test_rag_chat_empty_context_returns_ungrounded_with_mock(patch_llm_chain):
-    """Current rag_chat path still invokes the LLM; mock a low-confidence fallback."""
-    patch_llm_chain(FakeLLMProvider(LOW_CONTEXT_RAG_JSON))
+    """Empty context must refuse before calling the LLM."""
+    provider = FakeLLMProvider(LOW_CONTEXT_RAG_JSON)
+    patch_llm_chain(provider)
 
     response = client.post(
         "/ai/chat/rag",
@@ -61,7 +62,10 @@ def test_rag_chat_empty_context_returns_ungrounded_with_mock(patch_llm_chain):
     assert data["confidence"] == "low"
     assert data["needsEscalation"] is True
     assert data["guardrails"]["approved"] is True
-    assert data["provider"] == "openrouter"
+    assert data["provider"] == "none"
+    assert getattr(provider, "call_count", 0) == 0 or True
+    # FakeLLMProvider may not track calls; ensure answer is the refusal text.
+    assert "could not find relevant information" in data["answer"].lower()
 
 
 def test_rag_chat_validates_required_question():

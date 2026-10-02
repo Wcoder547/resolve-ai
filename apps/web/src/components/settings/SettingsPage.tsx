@@ -42,12 +42,12 @@ import {
   deleteAiProvider,
   listNotificationPreferences,
   updateNotificationPreferences,
-  updateOrganizationPlan,
   RateLimitError,
 } from "@/lib/api";
 import { ResendVerificationButton } from "@/components/auth/ResendVerificationButton";
 import { EmptyState, SectionMark } from "@/components/ui/EmptyState";
 import { saveTokens, saveOrganization, clearSession } from "@/lib/auth";
+import { canShowDevAuthLinks } from "@/lib/dev-auth-links";
 import type { AuthSession, CurrentOrganization, OrganizationInvite } from "@/types/auth";
 import type {
   Integration,
@@ -75,7 +75,7 @@ const navItems: { id: Section; label: string; icon: React.FC<any> }[] = [
   { id: "providers", label: "AI Providers", icon: Zap },
   { id: "integrations", label: "Integrations", icon: GitBranch },
   { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "billing", label: "Billing", icon: CreditCard },
+  { id: "billing", label: "Plan & usage", icon: CreditCard },
   { id: "security", label: "Security", icon: Shield },
   { id: "audit", label: "Audit log", icon: ClipboardList },
 ];
@@ -893,7 +893,7 @@ function MembersSection() {
     setInviteActionId(inviteId);
     try {
       const res = await resendOrganizationInvite(inviteId);
-      if (res.data.inviteUrl) setDevInviteUrl(res.data.inviteUrl);
+      if (canShowDevAuthLinks() && res.data.inviteUrl) setDevInviteUrl(res.data.inviteUrl);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't resend invite.");
@@ -969,7 +969,7 @@ function MembersSection() {
           actorRole={orgRole}
           onClose={() => setShowInvite(false)}
           onCreated={(_invite, inviteUrl) => {
-            if (inviteUrl) setDevInviteUrl(inviteUrl);
+            if (canShowDevAuthLinks() && inviteUrl) setDevInviteUrl(inviteUrl);
             void load();
           }}
         />
@@ -1507,88 +1507,45 @@ function IntegrationsSection() {
 function PlanPicker({
   currentPlan,
   plans,
-  onChanged,
 }: {
   currentPlan: string;
   plans: OrganizationPlan[];
-  onChanged: () => void;
+  onChanged?: () => void;
 }) {
-  const [role, setRole] = useState<string | null>(null);
-  const [saving, setSaving] = useState<string | null>(null);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    getCurrentOrganization()
-      .then((res) => {
-        if (!cancelled) setRole(res.data.organization.role ?? null);
-      })
-      .catch(() => {
-        if (!cancelled) setRole(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const canChange = role === "OWNER";
+  const freePlan = plans.find((plan) => plan.id === "FREE") ?? plans[0];
 
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
-        Plan limits apply to AI chat usage for this workspace. Payment collection is not wired; owners can switch tiers directly.
+        ResolveAI is free for every workspace. Limits below apply to AI chat
+        usage so the platform stays sustainable.
       </p>
-      {error ? <div className="text-xs text-red-700">{error}</div> : null}
-      <div className="grid gap-3">
-        {plans.map((plan) => {
-          const active = plan.id === currentPlan;
-          return (
-            <div
-              key={plan.id}
-              className={`bg-card border rounded-xl p-4 ${active ? "border-brand/30" : "border-border"}`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-foreground">{plan.label}</span>
-                    {active ? (
-                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-brand-soft text-brand border border-brand/20">Current</span>
-                    ) : null}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">{plan.description}</p>
-                  <p className="text-[11px] text-muted-foreground mt-2 font-mono">
-                    {plan.dailyRequestLimit.toLocaleString()} req/day · {plan.dailyTokenLimit.toLocaleString()} tok/day · {plan.monthlyTokenLimit.toLocaleString()} tok/mo
-                  </p>
-                </div>
-                <div className="text-right shrink-0">
-                  <div className="text-sm font-semibold text-foreground">
-                    {plan.priceUsd === 0 ? "Free" : `$${plan.priceUsd}/mo`}
-                  </div>
-                  {!active ? (
-                    <Button
-                      size="sm"
-                      disabled={!canChange || saving !== null}
-                      onClick={() => {
-                        setSaving(plan.id);
-                        setError("");
-                        void updateOrganizationPlan(plan.id)
-                          .then(() => onChanged())
-                          .catch((err) => setError(err instanceof Error ? err.message : "Couldn't change plan."))
-                          .finally(() => setSaving(null));
-                      }}
-                      className="mt-2 bg-brand-soft text-brand hover:bg-brand-soft text-xs"
-                    >
-                      {saving === plan.id ? "Switching..." : plan.priceUsd > 0 ? "Upgrade" : "Downgrade"}
-                    </Button>
-                  ) : null}
-                </div>
+      {freePlan ? (
+        <div className="bg-card border border-brand/30 rounded-xl p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-foreground">
+                  {freePlan.label}
+                </span>
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-brand-soft text-brand border border-brand/20">
+                  {currentPlan === freePlan.id ? "Current" : currentPlan}
+                </span>
               </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {freePlan.description}
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-2 font-mono">
+                {freePlan.dailyRequestLimit.toLocaleString()} req/day ·{" "}
+                {freePlan.dailyTokenLimit.toLocaleString()} tok/day ·{" "}
+                {freePlan.monthlyTokenLimit.toLocaleString()} tok/mo
+              </p>
             </div>
-          );
-        })}
-      </div>
-      {!canChange && role ? (
-        <p className="text-xs text-muted-foreground">Only the workspace owner can change the plan.</p>
+            <div className="text-right shrink-0">
+              <div className="text-sm font-semibold text-foreground">Free</div>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );
@@ -2105,7 +2062,10 @@ function SecuritySection() {
         </div>
       </div>
 
-      <div className="bg-card border border-border rounded-xl p-4">
+      <NotWiredBanner>
+        AI approval policy toggles below are preview-only. Tool approvals themselves are enforced server-side.
+      </NotWiredBanner>
+      <div className="bg-card border border-border rounded-xl p-4 opacity-80">
         <div className="text-sm font-semibold text-foreground mb-3">AI & approval controls</div>
         <div className="space-y-3 text-sm">
           {[
@@ -2116,7 +2076,7 @@ function SecuritySection() {
           ].map(item => (
             <div key={item.label} className="flex items-center justify-between">
               <span className="text-muted-foreground">{item.label}</span>
-              <div className={`w-8 h-4 rounded-full transition-colors cursor-pointer ${item.enabled ? "bg-brand" : "bg-slate-700"}`}>
+              <div className={`w-8 h-4 rounded-full transition-colors cursor-default ${item.enabled ? "bg-brand" : "bg-muted-foreground/40"}`}>
                 <div className={`w-3 h-3 rounded-full bg-white shadow transition-transform m-0.5 ${item.enabled ? "translate-x-4" : "translate-x-0"}`} />
               </div>
             </div>

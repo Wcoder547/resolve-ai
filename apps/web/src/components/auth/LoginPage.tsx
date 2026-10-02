@@ -7,6 +7,7 @@ import { Eye, EyeOff, ArrowRight } from "lucide-react";
 import { Button } from "../ui/button";
 import { ApiError, loginUser, resendEmailVerification } from "@/lib/api";
 import { saveTokens, saveUser, saveOrganization } from "@/lib/auth";
+import { canShowDevAuthLinks } from "@/lib/dev-auth-links";
 import { AuthBrandPanel, AuthShell } from "./AuthShell";
 
 export function LoginPage() {
@@ -52,7 +53,7 @@ export function LoginPage() {
       router.push("/dashboard");
     } catch (err) {
       if (err instanceof ApiError) {
-        if (err.code === "EMAIL_NOT_VERIFIED" || err.status === 403) {
+        if (err.code === "EMAIL_NOT_VERIFIED") {
           setNeedsVerification(true);
           setError(
             err.message || "Please verify your email before logging in.",
@@ -87,7 +88,7 @@ export function LoginPage() {
     try {
       const res = await resendEmailVerification(email.trim());
       setResendMessage(
-        res.data?.devVerificationUrl
+        canShowDevAuthLinks() && res.data?.devVerificationUrl
           ? `Development verification link: ${res.data.devVerificationUrl}`
           : res.message ||
               "If an account exists and is unverified, a verification email has been sent.",

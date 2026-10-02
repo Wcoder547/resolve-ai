@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { env } from "../../config/env.js";
+import { env, isProduction } from "../../config/env.js";
 import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
 import { createSecureToken, hashSecureToken } from "../../lib/secure-token.js";
@@ -127,7 +127,8 @@ export async function sendEmailVerificationForUser(userId: string) {
     expiresAt,
     alreadyVerified: false,
     skipped: false,
-    devVerificationUrl: emailResult.sent === false ? verificationUrl : null,
+    devVerificationUrl:
+      !isProduction && emailResult.sent === false ? verificationUrl : null,
   };
 }
 
@@ -269,7 +270,9 @@ export async function resendEmailVerification(userId: string) {
     alreadyVerified: false,
     message: result.sent
       ? "Verification email sent. Please check your inbox."
-      : "Verification link ready. Please check your email or use the development link.",
+      : isProduction
+        ? "Could not send verification email yet. Please try again shortly or contact support."
+        : "Verification link ready. Please check your email or use the development link.",
   };
 }
 

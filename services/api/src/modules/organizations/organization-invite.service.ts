@@ -1,5 +1,5 @@
 import { Prisma, UserRole } from "@prisma/client";
-import { env } from "../../config/env.js";
+import { env, isProduction } from "../../config/env.js";
 import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
 import { createSecureToken, hashSecureToken } from "../../lib/secure-token.js";
@@ -210,14 +210,18 @@ export async function createOrganizationInvite(
       organizationId,
       email: input.email,
       inviteId: invite.id,
-      inviteUrl: emailResult.sent === false ? inviteUrl : "[sent-by-email]",
+      inviteUrl:
+        !isProduction && emailResult.sent === false
+          ? inviteUrl
+          : "[sent-by-email]",
     },
     "Organization invite created",
   );
 
   return {
     invite: serializeInvite(invite),
-    inviteUrl: emailResult.sent === false ? inviteUrl : null,
+    inviteUrl:
+      !isProduction && emailResult.sent === false ? inviteUrl : null,
   };
 }
 

@@ -1,5 +1,5 @@
 from app.config.settings import get_settings
-from app.agents.agent_utils import compact_text, run_json_agent
+from app.agents.agent_utils import truncate_preserving_structure, run_json_agent
 from app.schemas.agents import AgentResolveRequest
 
 
@@ -49,7 +49,7 @@ Retrieval review output:
 {retrieval_output}
 
 Retrieved context:
-{compact_text(payload.context, 9000)}
+{truncate_preserving_structure(payload.context, 9000)}
 
 Diagnose the likely cause.
 """

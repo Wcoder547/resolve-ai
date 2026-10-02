@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  isEmailConfigured,
   sendOrganizationInviteEmail,
   sendPasswordResetEmail,
   sendVerificationEmail,
@@ -8,6 +9,10 @@ import {
 describe("Email service builders", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("reports email as unconfigured without Resend or SMTP", () => {
+    expect(isEmailConfigured()).toBe(false);
   });
 
   it("builds verification, reset, and invite emails without SMTP", async () => {

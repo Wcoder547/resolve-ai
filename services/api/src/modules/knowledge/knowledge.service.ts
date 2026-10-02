@@ -713,8 +713,9 @@ function normalizeVectorScore(score: number) {
 function buildContextText(chunks: SearchChunkRow[]) {
   return chunks
     .map((chunk, index) => {
+      const label = `S${index + 1}`;
       return [
-        `Source ${index + 1}: ${chunk.sourceName}`,
+        `[${label}] ${chunk.sourceName}`,
         `Document: ${chunk.documentTitle}`,
         `Chunk Index: ${chunk.chunkIndex}`,
         `Retrieval Score: ${Number(chunk.score).toFixed(4)}`,
@@ -765,6 +766,13 @@ async function keywordSearchChunks(input: {
     return rows;
   }
 
+  // Soft ILIKE fallback — only when the query is specific enough to avoid
+  // flooding the LLM with unrelated chunks (e.g. single common words).
+  const trimmed = input.query.trim();
+  if (trimmed.length < 8 || trimmed.split(/\s+/).filter(Boolean).length < 2) {
+    return [];
+  }
+
   return prisma.$queryRaw<SearchChunkRow[]>`
     SELECT
       dc.id,
@@ -778,15 +786,15 @@ async function keywordSearchChunks(input: {
       ks.id AS "sourceId",
       ks.name AS "sourceName",
       ks.type AS "sourceType",
-      0.1 AS score
+      0.08 AS score
     FROM "DocumentChunk" dc
     INNER JOIN "Document" d ON d.id = dc."documentId"
     INNER JOIN "KnowledgeSource" ks ON ks.id = d."sourceId"
     WHERE dc."organizationId" = ${input.organizationId}
       AND ks.status = 'COMPLETED'
-      AND dc."chunkText" ILIKE ${`%${input.query}%`}
+      AND dc."chunkText" ILIKE ${`%${trimmed}%`}
     ORDER BY dc."createdAt" DESC
-    LIMIT ${input.limit};
+    LIMIT ${Math.min(input.limit, 3)};
   `;
 }
 

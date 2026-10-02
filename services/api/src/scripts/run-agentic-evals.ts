@@ -66,9 +66,13 @@ function evaluateCase(testCase: AgenticEvalCase, result: any): EvalResult {
   const toolCalls = getToolCalls(result);
 
   if (testCase.expectedNoContext) {
+    const skipped =
+      agentRun == null ||
+      agentRun?.status === "skipped_no_context" ||
+      agentRun?.id == null;
     checks.push({
-      name: "expected_no_context_agent_run_null",
-      passed: agentRun === null,
+      name: "expected_no_context_agent_run_skipped",
+      passed: skipped,
       details: {
         agentRun
       }

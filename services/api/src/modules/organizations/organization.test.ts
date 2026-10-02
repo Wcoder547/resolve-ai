@@ -234,7 +234,13 @@ describe("Organizations API", () => {
       .patch(`${API_PREFIX}/organizations/current/plan`)
       .set("Authorization", `Bearer ${owner.accessToken}`)
       .send({ plan: "PRO" });
-    expect(plan.status).toBe(200);
+    expect(plan.status).toBe(400);
+
+    const keepFree = await request(app)
+      .patch(`${API_PREFIX}/organizations/current/plan`)
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({ plan: "FREE" });
+    expect(keepFree.status).toBe(200);
 
     const transfer = await request(app)
       .post(`${API_PREFIX}/organizations/current/transfer`)

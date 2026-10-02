@@ -46,6 +46,7 @@ check_not_empty "JWT_ACCESS_SECRET"
 check_not_empty "JWT_REFRESH_SECRET"
 check_not_empty "DATABASE_URL"
 check_not_empty "CORS_ORIGIN"
+check_not_empty "FRONTEND_URL"
 check_not_empty "INTEGRATION_SECRET_ENCRYPTION_KEY"
 
 check_no_default "JWT_ACCESS_SECRET"
@@ -65,6 +66,29 @@ if echo "$cors_origin" | grep -q "^https://"; then
   echo "✅ CORS_ORIGIN uses HTTPS"
 else
   echo "❌ CORS_ORIGIN should use HTTPS in production"
+  failures=$((failures + 1))
+fi
+
+frontend_url="$(grep "^FRONTEND_URL=" "$ENV_FILE" | cut -d '=' -f2- | tr -d '"' || true)"
+
+if echo "$frontend_url" | grep -q "^https://"; then
+  echo "✅ FRONTEND_URL uses HTTPS"
+else
+  echo "❌ FRONTEND_URL should use HTTPS in production (email links)"
+  failures=$((failures + 1))
+fi
+
+resend_key="$(grep "^RESEND_API_KEY=" "$ENV_FILE" | cut -d '=' -f2- | tr -d '"' || true)"
+smtp_host="$(grep "^SMTP_HOST=" "$ENV_FILE" | cut -d '=' -f2- | tr -d '"' || true)"
+smtp_user="$(grep "^SMTP_USER=" "$ENV_FILE" | cut -d '=' -f2- | tr -d '"' || true)"
+smtp_pass="$(grep "^SMTP_PASS=" "$ENV_FILE" | cut -d '=' -f2- | tr -d '"' || true)"
+
+if [ -n "$resend_key" ]; then
+  echo "✅ RESEND_API_KEY is set (preferred mail transport)"
+elif [ -n "$smtp_host" ] && [ -n "$smtp_user" ] && [ -n "$smtp_pass" ]; then
+  echo "✅ SMTP_* is set (fallback mail transport)"
+else
+  echo "❌ Configure RESEND_API_KEY or SMTP_HOST/USER/PASS for verify / forgot-password / invite emails"
   failures=$((failures + 1))
 fi
 

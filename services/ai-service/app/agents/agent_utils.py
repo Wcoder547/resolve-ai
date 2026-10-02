@@ -16,12 +16,35 @@ _UNAVAILABLE_MODELS: Set[Tuple[str, str]] = set()
 
 
 def compact_text(value: str, max_chars: int = 4000) -> str:
+    """Flatten whitespace — use for chat history only, not retrieved context."""
     text = " ".join((value or "").split()).strip()
 
     if len(text) > max_chars:
         return text[:max_chars] + "..."
 
     return text
+
+
+def truncate_preserving_structure(value: str, max_chars: int = 9000) -> str:
+    """
+    Truncate retrieved context while keeping newlines / chunk separators.
+    Prefer cutting at the last --- boundary before the budget.
+    """
+    text = (value or "").strip()
+    if len(text) <= max_chars:
+        return text
+
+    window = text[:max_chars]
+    sep = window.rfind("\n\n---\n\n")
+    if sep >= max_chars // 3:
+        return window[:sep].rstrip() + "\n\n...[truncated]"
+
+    # Fall back to last paragraph break
+    para = window.rfind("\n\n")
+    if para >= max_chars // 3:
+        return window[:para].rstrip() + "\n\n...[truncated]"
+
+    return window.rstrip() + "..."
 
 
 def build_history_text(history: List[Any]) -> str:

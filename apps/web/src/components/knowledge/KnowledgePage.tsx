@@ -124,6 +124,24 @@ export function KnowledgePage() {
     loadSources();
   }, [loadSources]);
 
+  // Poll while any source is still ingesting so status badges update live.
+  useEffect(() => {
+    const pending = sources.some(
+      (s) => s.status === "PENDING" || s.status === "PROCESSING",
+    );
+    if (!pending) return;
+
+    const timer = setInterval(() => {
+      void listKnowledgeSources()
+        .then((res) => setSources(res.data.sources))
+        .catch(() => {
+          /* keep last known list */
+        });
+    }, 4000);
+
+    return () => clearInterval(timer);
+  }, [sources]);
+
   useEffect(() => {
     if (!selectedId) {
       setSelectedDetail(null);

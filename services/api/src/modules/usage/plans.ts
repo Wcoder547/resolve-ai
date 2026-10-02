@@ -12,12 +12,17 @@ export type OrganizationPlanDefinition = {
   monthlyTokenLimit: number;
 };
 
+/**
+ * ResolveAI is a free product. PRO/TEAM remain in the catalog only so
+ * legacy orgs with those plan strings still resolve limits correctly.
+ * New workspaces stay on FREE; self-serve upgrades are disabled.
+ */
 export const PLAN_CATALOG: Record<OrganizationPlanId, OrganizationPlanDefinition> = {
   FREE: {
     id: "FREE",
     label: "Free",
     priceUsd: 0,
-    description: "For evaluating ResolveAI with a small team.",
+    description: "Full ResolveAI workspace — free for everyone.",
     dailyRequestLimit: 100,
     dailyTokenLimit: 100_000,
     monthlyTokenLimit: 1_000_000,
@@ -25,8 +30,8 @@ export const PLAN_CATALOG: Record<OrganizationPlanId, OrganizationPlanDefinition
   PRO: {
     id: "PRO",
     label: "Pro",
-    priceUsd: 49,
-    description: "Higher limits for active support and incident work.",
+    priceUsd: 0,
+    description: "Legacy higher limits (not offered for new upgrades).",
     dailyRequestLimit: 1_000,
     dailyTokenLimit: 1_000_000,
     monthlyTokenLimit: 10_000_000,
@@ -34,13 +39,15 @@ export const PLAN_CATALOG: Record<OrganizationPlanId, OrganizationPlanDefinition
   TEAM: {
     id: "TEAM",
     label: "Team",
-    priceUsd: 149,
-    description: "For larger workspaces with heavier AI usage.",
+    priceUsd: 0,
+    description: "Legacy higher limits (not offered for new upgrades).",
     dailyRequestLimit: 5_000,
     dailyTokenLimit: 5_000_000,
     monthlyTokenLimit: 50_000_000,
   },
 };
+
+export const PUBLIC_PLAN_IDS: OrganizationPlanId[] = ["FREE"];
 
 export function isOrganizationPlanId(value: string): value is OrganizationPlanId {
   return ORGANIZATION_PLANS.includes(value as OrganizationPlanId);
@@ -54,6 +61,7 @@ export function getPlanDefinition(plan: string): OrganizationPlanDefinition {
   return PLAN_CATALOG.FREE;
 }
 
+/** Plans shown in Settings / usage summary — free product only. */
 export function listPlanCatalog() {
-  return ORGANIZATION_PLANS.map((id) => PLAN_CATALOG[id]);
+  return PUBLIC_PLAN_IDS.map((id) => PLAN_CATALOG[id]);
 }

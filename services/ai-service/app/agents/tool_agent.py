@@ -67,6 +67,35 @@ def run_tool_agent(
             "providerErrors": [],
         }
 
+    needs_tool_action = bool(triage_output.get("needsToolAction", False))
+    if not needs_tool_action:
+        return {
+            "output": {
+                "toolCalls": [],
+                "reasoning": "Triage did not request tool action.",
+            },
+            "step": {
+                "agentName": "tool_agent",
+                "status": "skipped",
+                "provider": None,
+                "model": None,
+                "latencyMs": 0,
+                "input": {
+                    "promptVersion": settings.agentic_prompt_version,
+                    "needsToolAction": False,
+                },
+                "output": {
+                    "toolCalls": [],
+                    "reasoning": "Triage did not request tool action.",
+                },
+                "error": None,
+            },
+            "provider": "none",
+            "model": "none",
+            "fallbackUsed": False,
+            "providerErrors": [],
+        }
+
     available_tools = list_available_tools()
 
     standalone_question = payload.standalone_question or payload.question

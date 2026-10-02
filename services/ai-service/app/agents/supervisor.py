@@ -126,6 +126,57 @@ def resolve_with_agents(payload: AgentResolveRequest):
 
     retrieval_output = retrieval_result["output"]
 
+    context_adequate = bool(retrieval_output.get("contextAdequate", True))
+    if not context_adequate or not (payload.context or "").strip() or not payload.sources:
+        refusal_answer = "\n".join(
+            [
+                "## Direct Answer",
+                "I could not find enough relevant knowledge base context to produce a reliable resolution.",
+                "",
+                "## Recommended Steps",
+                "1. Upload documentation that covers this topic, or wait for ingestion to finish.",
+                "2. Rephrase with product-specific terms from your knowledge base.",
+                "3. Escalate to a human agent if this is customer-impacting.",
+                "",
+                "## Confidence",
+                "Low",
+            ]
+        )
+        return {
+            "answer": refusal_answer,
+            "agentRunId": agent_run_id,
+            "status": "completed",
+            "agentsUsed": ["triage_agent", "retrieval_agent"],
+            "steps": steps,
+            "toolCalls": [],
+            "triage": triage_output,
+            "retrievalReview": retrieval_output,
+            "diagnostic": None,
+            "resolution": {
+                "directAnswer": "Insufficient retrieved context.",
+                "recommendedSteps": [],
+                "confidence": "low",
+                "needsEscalation": True,
+                "escalationReason": "Retrieval review marked context as inadequate.",
+            },
+            "qa": {
+                "approved": True,
+                "grounded": False,
+                "riskLevel": "low",
+                "unsupportedReason": "Skipped resolution because retrieval context was inadequate.",
+            },
+            "citations": [],
+            "grounded": False,
+            "confidence": "low",
+            "needsEscalation": True,
+            "escalationReason": "Retrieval review marked context as inadequate.",
+            "provider": final_provider,
+            "model": final_model,
+            "promptVersion": settings.agentic_prompt_version,
+            "fallbackUsed": fallback_used,
+            "providerErrors": provider_errors,
+        }
+
     diagnostic_result = run_diagnostic_agent(
         payload=payload,
         triage_output=triage_output,
@@ -188,23 +239,19 @@ def resolve_with_agents(payload: AgentResolveRequest):
     approved = bool(qa_output.get("approved", False))
 
     if settings.agent_require_qa_approval and not approved:
-        final["answer"] = "\n".join(
-            [
-                "## Direct Answer",
-                "I found relevant context, but the multi-agent QA check did not approve the generated resolution.",
-                "",
-                "## Recommended Steps",
-                "1. Review the retrieved sources manually.",
-                "2. Ask the question again with more specific details.",
-                "3. Escalate to a human support lead if this is customer-impacting.",
-                "",
-                "## Confidence",
-                "Low",
-            ]
-        )
-        final["confidence"] = "low"
+        # Keep the resolution visible; attach an escalation note instead of wiping it.
         final["needsEscalation"] = True
-        final["escalationReason"] = qa_output.get("unsupportedReason") or "QA guardrail did not approve the resolution."
+        final["escalationReason"] = (
+            qa_output.get("unsupportedReason")
+            or "QA guardrail did not fully approve the resolution."
+        )
+        if final["confidence"] == "high":
+            final["confidence"] = "medium"
+        final["answer"] = (
+            final["answer"].rstrip()
+            + "\n\n## Escalation\n"
+            + (final["escalationReason"] or "Human review recommended.")
+        )
 
     return {
         "answer": final["answer"],

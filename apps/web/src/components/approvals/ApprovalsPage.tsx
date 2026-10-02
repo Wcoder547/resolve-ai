@@ -83,7 +83,7 @@ function ConfirmModal({
         {risk === "High" && action === "approve" && (
           <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl p-3">
             <AlertTriangle className="w-4 h-4 text-red-700 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-red-300">This is a high-risk action. Review the payload carefully before approving. This action cannot be undone once executed.</p>
+            <p className="text-xs text-red-700">This is a high-risk action. Review the payload carefully before approving. This action cannot be undone once executed.</p>
           </div>
         )}
 
@@ -209,7 +209,7 @@ function ApprovalDetail({
           {risk === "High" && status === "Pending" && (
             <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl p-3">
               <AlertTriangle className="w-4 h-4 text-red-700 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-red-300 leading-relaxed">This is a <strong>high-risk action</strong>. Review all details carefully before approving. Execution cannot be undone.</p>
+              <p className="text-xs text-red-700 leading-relaxed">This is a <strong>high-risk action</strong>. Review all details carefully before approving. Execution cannot be undone.</p>
             </div>
           )}
 
@@ -391,6 +391,10 @@ export function ApprovalsPage() {
               </button>
             ))}
           </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Approved/Rejected tabs show actions from this browser session only.
+            Pending items reload from the server.
+          </p>
         </div>
 
         <div className="flex-1 overflow-y-auto p-3 space-y-2">

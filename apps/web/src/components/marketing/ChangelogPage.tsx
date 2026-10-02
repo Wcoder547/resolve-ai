@@ -4,12 +4,21 @@ import { MarketingPageHero, MarketingShell } from "./MarketingShell";
 
 const entries = [
   {
+    version: "0.5.0",
+    date: "Oct 2026",
+    items: [
+      "ResolveAI is completely free — no paid Pro/Team upgrades.",
+      "Resend email support for verify, forgot password, and invites.",
+      "Production launch checklist and env templates.",
+    ],
+  },
+  {
     version: "0.4.0",
     date: "Mar 2026",
     items: [
       "Marketing site expanded (about, blog, changelog, contact, legal).",
       "Auth pages: back-to-home navigation + shared AuthShell.",
-      "Pricing aligned to Free / Pro / Team usage plans.",
+      "Usage limits for free workspaces.",
     ],
   },
   {
