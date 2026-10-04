@@ -1,8 +1,8 @@
 {
-  email your-email@example.com
+  email hello@vynuro.tech
 }
 
-api.yourdomain.com {
+api.resolveai.vynuro.tech {
   @blockedMetrics path /metrics
   respond @blockedMetrics 404
 
