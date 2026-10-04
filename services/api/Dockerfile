@@ -4,6 +4,7 @@ WORKDIR /app
 
 COPY package.json ./
 COPY prisma ./prisma
+COPY prisma.config.ts ./
   RUN npm install -g npm@12.2.0 && npm install --legacy-peer-deps
 RUN npx prisma generate
 
@@ -21,6 +22,7 @@ ENV NODE_ENV=production
 COPY --from=base /app/package.json ./package.json
 COPY --from=base /app/node_modules ./node_modules
 COPY --from=base /app/prisma ./prisma
+COPY --from=base /app/prisma.config.ts ./prisma.config.ts
 COPY --from=base /app/dist ./dist
 
 RUN mkdir -p /app/uploads
