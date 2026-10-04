@@ -4,9 +4,7 @@ WORKDIR /app
 
 COPY package.json ./
 COPY prisma ./prisma
-
-RUN npm install
-
+  RUN npm install -g npm@12.2.0 && npm install --legacy-peer-deps
 RUN npx prisma generate
 
 COPY tsconfig.json ./
