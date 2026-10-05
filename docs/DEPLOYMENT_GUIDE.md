@@ -26,14 +26,20 @@ This document outlines the step-by-step process for deploying the complete Resol
 
 ### Domain Configuration
 In your domain registrar (e.g., Cloudflare, Namecheap), create two `A` records pointing to the public IP of your EC2 instance:
-1. `resolveai.vynuro.tech` -> `<EC2_PUBLIC_IP>`
-2. `api.resolveai.vynuro.tech` -> `<EC2_PUBLIC_IP>`
+1. `resolveai.vynuro.tech` -> `16.176.71.200`
+2. `api.resolveai.vynuro.tech` -> `16.176.71.200`
 
 ---
 
 ## 3. Server Provisioning
 
-SSH into your EC2 instance and run the following commands to install Docker and clone the repository:
+SSH into your EC2 instance using your `.pem` key:
+
+```bash
+ssh -i "resolveai.pem" ubuntu@ec2-16-176-71-200.ap-southeast-2.compute.amazonaws.com
+```
+
+Once inside the server, run the following commands to install Docker and clone the repository:
 
 ```bash
 # Update system and install Docker
